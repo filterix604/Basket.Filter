@@ -4,11 +4,21 @@ using Google.Cloud.Firestore;
 using Basket.Filter.Infrastructure.Services;
 using Basket.Filter.Services.Interfaces;
 using Basket.Filter.Mappers;
+using Basket.Filter.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 var projectId = "basket-filter-engine"; // Replace with your project ID
 Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", "firestore-key.json");
 builder.Services.AddSingleton(FirestoreDb.Create(projectId));
+
+// Cache configuration
+builder.Services.Configure<CacheConfig>(builder.Configuration.GetSection("Cache"));
+
+//Memory cache
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = 100 * 1024 * 1024; // 100MB
+});
 
 // Add services to the container.
 builder.Services.AddMemoryCache();
@@ -17,6 +27,7 @@ builder.Services.AddScoped<IEligibilityRulesService, EligibilityRulesService>();
 builder.Services.AddScoped<IBasketFilteringService, BasketFilteringService>();
 builder.Services.AddScoped<ICatalogService, CatalogService>();
 builder.Services.AddScoped<IDataStorageService, DataStorageService>();
+builder.Services.AddSingleton<ICacheService, CacheService>();
 
 builder.Services.AddScoped<IEligibilityRulesService, EligibilityRulesService>();
 builder.Services.AddScoped<IDataSeedingService, DataSeedingService>();

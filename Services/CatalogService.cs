@@ -9,12 +9,14 @@ namespace Basket.Filter.Services
     {
         private readonly FirestoreDb _firestore;
         private readonly ILogger<CatalogService> _logger;
+        private readonly ICacheService _cacheService; 
         private const string CATALOG_COLLECTION = "catalog_items";
 
-        public CatalogService(FirestoreDb firestore, ILogger<CatalogService> logger)
+        public CatalogService(FirestoreDb firestore, ILogger<CatalogService> logger, ICacheService cacheService)
         {
             _firestore = firestore;
             _logger = logger;
+            _cacheService = cacheService;
         }
 
         public async Task<CatalogUploadResponse> UploadCatalogJsonAsync(IFormFile file)
@@ -23,7 +25,6 @@ namespace Basket.Filter.Services
 
             try
             {
-                // Parse JSON file
                 var items = await ParseJsonFileAsync(file);
                 response.TotalItems = items.Count;
 
@@ -33,7 +34,6 @@ namespace Basket.Filter.Services
                     return response;
                 }
 
-                // Upload to Firestore in batches
                 var batch = _firestore.StartBatch();
                 var batchCount = 0;
 
@@ -41,7 +41,6 @@ namespace Basket.Filter.Services
                 {
                     try
                     {
-                        // Validate required fields
                         if (string.IsNullOrEmpty(item.Sku))
                         {
                             response.FailedItems++;
@@ -49,7 +48,6 @@ namespace Basket.Filter.Services
                             continue;
                         }
 
-                        // Normalize category
                         item.NormalizedCategory = NormalizeCategory(item.OriginalCategory);
                         item.CreatedAt = DateTime.UtcNow;
                         item.UpdatedAt = DateTime.UtcNow;
@@ -57,10 +55,11 @@ namespace Basket.Filter.Services
                         var docRef = _firestore.Collection(CATALOG_COLLECTION).Document(item.Sku);
                         batch.Set(docRef, item);
 
+                        await _cacheService.SetCatalogItemAsync(item.Sku, item);
+
                         batchCount++;
                         response.SuccessfulItems++;
 
-                        // Commit batch every 500 items (Firestore limit)
                         if (batchCount >= 500)
                         {
                             await batch.CommitAsync();
@@ -76,14 +75,12 @@ namespace Basket.Filter.Services
                     }
                 }
 
-                // Commit remaining items
                 if (batchCount > 0)
                 {
                     await batch.CommitAsync();
                 }
 
                 response.Message = $"Catalog upload completed. {response.SuccessfulItems}/{response.TotalItems} items uploaded successfully.";
-                _logger.LogInformation("Catalog upload completed: {SuccessfulItems}/{TotalItems}", response.SuccessfulItems, response.TotalItems);
                 return response;
             }
             catch (Exception ex)
@@ -94,12 +91,31 @@ namespace Basket.Filter.Services
             }
         }
 
-        public async Task<CatalogItem> GetItemBySkuAsync(string sku)
+        public async Task<CatalogItem?> GetItemBySkuAsync(string sku)
         {
             try
             {
+                // Step 1: Check cache first
+                var cachedItem = await _cacheService.GetCatalogItemAsync(sku);
+                if (cachedItem != null)
+                {
+                    return cachedItem;
+                }
+
+                // Step 2: Cache miss - get from Firestore
                 var doc = await _firestore.Collection(CATALOG_COLLECTION).Document(sku).GetSnapshotAsync();
-                return doc.Exists ? doc.ConvertTo<CatalogItem>() : null;
+
+                if (!doc.Exists)
+                {
+                    return null;
+                }
+
+                var item = doc.ConvertTo<CatalogItem>();
+
+                // Step 3: Store in cache
+                await _cacheService.SetCatalogItemAsync(sku, item);
+
+                return item;
             }
             catch (Exception ex)
             {
