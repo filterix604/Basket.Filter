@@ -3,7 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Basket.Filter.Models.Rules;
 using Basket.Filter.Services.Interface;
 
-namespace basket_filter_engine.Services
+namespace Basket.Filter.Services
 {
     public class EligibilityRulesService : IEligibilityRulesService
     {

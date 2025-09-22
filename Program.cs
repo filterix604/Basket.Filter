@@ -1,6 +1,5 @@
 using Basket.Filter.Services.Interface;
 using Basket.Filter.Services;
-using basket_filter_engine.Services;
 using Google.Cloud.Firestore;
 
 var builder = WebApplication.CreateBuilder(args);
