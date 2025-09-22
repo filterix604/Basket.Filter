@@ -1,0 +1,96 @@
+[
+  {
+    "countryCode": "FR",
+    "countryName": "France",
+    "defaultDailyLimit": 25.00,
+    "regulatoryFramework": "French Labour Code Article L3262-1",
+    "requiresEmployeeValidation": true,
+    "defaultTimeRestrictions": {
+      "hasTimeRestrictions": true,
+      "lunchStartTime": "11:30:00",
+      "lunchEndTime": "14:30:00",
+      "dinnerStartTime": "19:00:00",
+      "dinnerEndTime": "22:00:00"
+    },
+    "defaultAllowedDays": [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" ],
+    "categoryRules": [
+      {
+        "categoryId": "prepared_meals",
+        "categoryName": "Prepared Meals",
+        "isEligible": true,
+        "keywords": [ "sandwich", "salade", "pizza", "burger", "menu", "plat", "quiche" ],
+        "description": "Ready-to-eat meals",
+        "eligibilityReason": "Eligible under French meal voucher regulations",
+        "requiresImmediateConsumption": true
+      },
+      {
+        "categoryId": "menu_avec_alcool",
+        "categoryName": "Menu with Alcohol",
+        "isEligible": true,
+        "keywords": [ "menu", "formule", "menu complet" ],
+        "description": "Complete meal menus including alcohol",
+        "eligibilityReason": "Allowed in France if alcohol < 1/3 of menu price",
+        "maxAlcoholPercentage": 33.33
+      },
+      {
+        "categoryId": "alcohol",
+        "categoryName": "Standalone Alcohol",
+        "isEligible": false,
+        "keywords": [ "bière", "vin", "alcool", "spiritueux" ],
+        "description": "Alcoholic beverages purchased alone",
+        "eligibilityReason": "Standalone alcohol prohibited"
+      },
+      {
+        "categoryId": "fresh_food",
+        "categoryName": "Fresh Food",
+        "isEligible": true,
+        "keywords": [ "fruit", "légume", "pomme", "banane" ],
+        "description": "Fresh fruits and vegetables",
+        "eligibilityReason": "Fresh produce for immediate consumption"
+      },
+      {
+        "categoryId": "non_food",
+        "categoryName": "Non-Food Products",
+        "isEligible": false,
+        "keywords": [ "parfum", "cosmétique", "produit ménager" ],
+        "description": "Non-food products",
+        "eligibilityReason": "Only food products allowed"
+      },
+      {
+        "categoryId": "delivery_fee",
+        "categoryName": "Delivery Fees",
+        "isEligible": false,
+        "keywords": [ "livraison", "frais", "delivery" ],
+        "description": "Service charges",
+        "eligibilityReason": "Service fees not eligible"
+      }
+    ]
+  },
+  {
+    "countryCode": "BE",
+    "countryName": "Belgium",
+    "defaultDailyLimit": 8.00,
+    "regulatoryFramework": "Belgian Social Security Code",
+    "requiresEmployeeValidation": true,
+    "defaultTimeRestrictions": {
+      "hasTimeRestrictions": false
+    },
+    "defaultAllowedDays": [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" ],
+    "categoryRules": [
+      {
+        "categoryId": "prepared_meals",
+        "categoryName": "Prepared Meals",
+        "isEligible": true,
+        "keywords": [ "sandwich", "salade", "pizza" ],
+        "description": "Ready-to-eat meals"
+      },
+      {
+        "categoryId": "alcohol",
+        "categoryName": "All Alcohol",
+        "isEligible": false,
+        "keywords": [ "beer", "wine", "alcohol", "bière", "vin" ],
+        "description": "All alcoholic beverages prohibited"
+      }
+    ]
+  }
+]

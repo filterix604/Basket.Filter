@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "basket-filter-engine",
+  "private_key_id": "04ab961fcd5738457f9fa783ae2a24a7bde476ab",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDPKyJtesJHnMIV\nY8eK3LgwzSjY0SdpiVsHKHCNU9fe7Go/1TSEbqDcpWvQ8vbJn2xSpyAg0Bqr4YcW\no0bAMTVkpdQVEoNfoaSdElWLyM5Nn7dAjKiDh9PnhVGWh2Ktqzaw7sqnVCBCMYTS\n301rHOAh6Gd4hVrdY2Tm5VR5KNAsHUJCcrsM7Lw0CzzZjuVkTdW6Ac0Wm19pzkIv\nsZthp/R1Hcalt0XY5gKl6pr7LjWcNmZyLdgfR4aDP3Ev29o7eQUe9Icvi+q2araU\nbtSiSwWKmIFAvPQbpW4NhEJxO3K4OrcWnWqWdqiia9+s6UOeXSRtR0TeqNLF+M28\nRBAdzRL3AgMBAAECggEADaKY3cWBNIzX3MNl4ea1pVnEl+d8MygFMXRFWwNY1RL+\nXGEt+/zWT90kg8YjJlqhP2UcjsxRVRPjxR3yjUxUZ5hMygCNE0qJJIVortdymlZz\nVqdrV+zb0wRJ4rNIKxjkTzBRbtTMorxkxCslwZYqYAfOZVJNDGyfuqYjsXbno4Qc\nRlwCWoHbJuOUXkR+skghrxT98LykR+VPc/5LOBMQNjri+YSYtTifJTAfQbCzDhZN\nKfYQl1aJgwSPgA+8jVyKGkGnwLZIqA9jURqEEZeCG7YK5L/wpUiC4X3OL+FT8d9I\nUre3FHnogVONbEUAMknbpm41/1sOSNF6FE3pV4v2YQKBgQDwjdk8RY+fOGj+pB6x\nU8KjP0IgCjT3pH+8YEQ+KmvEC7duEeq7j7xbsIiooo8L2dttx4ktB0N5xKdp7qLI\n2ekAdDIhDs465OZDmlDCSVaKbE6HRE1OjQyhnI21tZ9oTsTpqnl7IhDOoFzAQDGT\nbC3jT9LudxClEm9pK2Asz9KRWQKBgQDceIEI6fGO48y2qdkK0CAzUrlXWMps3B8H\n5Rio49c6HoDYnNh26iznM/aqzHmCHALoPJH3RCfhYL/dEA8YxursM6I/dghVykqC\nlQvxYGya8Syjj165v4ADwT9qiEIyI4qY2w3NMK5EgnRCwbb/0UWkKSm8NNSZyvOX\nmkSZB/hszwKBgEeLqOTIO6M7f97cqVRMeUNceSpWXtKY1nUMnL9wloTEh1XxdkM6\nyObsZnjhgHIh5aWNBzuhQWxiFPjoxPm/9hDwfkhewu+5TNMmfoaKkXayJ9kLc4K9\naNhYW72Du1mms+Jbla4Nv7n08CEt9pDGSA+nmjDasNSn2wMIp54sYZBhAoGAAh2x\n91jvdZSgIVyt9ZmbxYJUvw7eGn9eWOANBYnyRd+HEw0mUrXaqnloM6l0vRfxuzLh\nn8LqsxIPpVqDGpTGKnAwbXV/jPs9DdXKYI2xXSdVa1hz60p4OxD+v9IA+KQ4r1Di\n6AZAle2+melsDTZ/+Zxfhyvmonc9MUZMxD88VicCgYEAtd6eNyCQizgzQhqqT6Pn\n2dNzMSRGxGeGidLMZhkErjs/WkgxL2TIzAx/3I/RH5ROcEuUeIgQp97vnnm8UHxx\nEAmFXes81LNZHb+HWbqUBO4zYY0hRZJWbunSxJ8rv7FE61ADBnzAgF/qYvUTuW18\nDgnuIU67iMAQ3I/+cdFFLks=\n-----END PRIVATE KEY-----\n",
+  "client_email": "basket-filter-service@basket-filter-engine.iam.gserviceaccount.com",
+  "client_id": "112466733649662787198",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/basket-filter-service%40basket-filter-engine.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

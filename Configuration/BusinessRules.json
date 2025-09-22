@@ -1,0 +1,67 @@
+{
+  "merchantTypes": {
+    "quick_service": {
+      "typeName": "Quick Service Restaurant",
+      "description": "Fast food restaurants and QSR chains",
+      "defaultAllowAlcoholInCombos": true,
+      "requiresTimeRestrictions": true,
+      "operatesWeekends": true,
+      "allowsBulkPurchases": false,
+      "maxItemsPerOrder": 50,
+      "typicalCategories": [ "prepared_meals", "beverages", "menu_avec_alcool" ]
+    },
+    "grocery": {
+      "typeName": "Grocery Store",
+      "description": "Supermarkets and grocery stores",
+      "defaultAllowAlcoholInCombos": false,
+      "requiresTimeRestrictions": false,
+      "operatesWeekends": true,
+      "allowsBulkPurchases": true,
+      "maxItemsPerOrder": 100,
+      "typicalCategories": [ "prepared_meals", "fresh_food", "beverages" ]
+    },
+    "restaurant": {
+      "typeName": "Restaurant",
+      "description": "Full-service restaurants",
+      "defaultAllowAlcoholInCombos": true,
+      "requiresTimeRestrictions": true,
+      "operatesWeekends": true,
+      "allowsBulkPurchases": false,
+      "maxItemsPerOrder": 20,
+      "typicalCategories": [ "prepared_meals", "menu_avec_alcool" ]
+    },
+    "vending": {
+      "typeName": "Vending Machine",
+      "description": "Automated vending machines",
+      "defaultAllowAlcoholInCombos": false,
+      "requiresTimeRestrictions": false,
+      "operatesWeekends": true,
+      "allowsBulkPurchases": false,
+      "maxItemsPerOrder": 10,
+      "typicalCategories": [ "prepared_meals", "beverages" ]
+    }
+  },
+  "countries": {
+    "FR": {
+      "countryCode": "FR",
+      "allowAlcoholInMenus": true,
+      "maxAlcoholPercentageInMenu": 33.33,
+      "hasStrictTimeRestrictions": true,
+      "prohibitedCategories": []
+    },
+    "BE": {
+      "countryCode": "BE",
+      "allowAlcoholInMenus": false,
+      "maxAlcoholPercentageInMenu": 0.0,
+      "hasStrictTimeRestrictions": false,
+      "prohibitedCategories": [ "alcohol", "menu_avec_alcool" ]
+    },
+    "DE": {
+      "countryCode": "DE",
+      "allowAlcoholInMenus": false,
+      "maxAlcoholPercentageInMenu": 0.0,
+      "hasStrictTimeRestrictions": true,
+      "prohibitedCategories": [ "alcohol" ]
+    }
+  }
+}
