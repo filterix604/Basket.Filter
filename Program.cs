@@ -7,6 +7,14 @@ using Basket.Filter.Mappers;
 using Basket.Filter.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    // Cloud Run automatically provides PORT environment variable
+    var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+    options.ListenAnyIP(int.Parse(port));
+});
+
 var projectId = "basket-filter-engine"; // Replace with your project ID
 Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", "firestore-key.json");
 builder.Services.AddSingleton(FirestoreDb.Create(projectId));

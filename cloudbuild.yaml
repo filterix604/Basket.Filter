@@ -1,4 +1,4 @@
-# cloudbuild.yaml (Enhanced)
+# cloudbuild.yaml 
 steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
@@ -16,7 +16,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest']
 
-  # Deploy to Cloud Run with extended timeout
+  # Deploy to Cloud Run 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
@@ -30,8 +30,7 @@ steps:
       '--max-instances', '10',
       '--min-instances', '0',
       '--timeout', '900',
-      '--cpu-throttling',
-      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,PORT=8080,GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production'
     ]
 
 images:
@@ -40,4 +39,3 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'E2_HIGHCPU_8'

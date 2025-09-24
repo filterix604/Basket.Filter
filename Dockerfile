@@ -1,4 +1,4 @@
-# Dockerfile (Enhanced for Cloud Run)
+# Dockerfile (Fixed - Remove PORT env)
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
 EXPOSE 8080
@@ -23,14 +23,9 @@ COPY --from=publish /app/publish .
 # Copy Firestore credentials
 COPY firestore-key.json /app/firestore-key.json
 
-# CLOUD RUN: Essential environment variables
+# CLOUD RUN: Only set these (NOT PORT)
 ENV ASPNETCORE_URLS=http://*:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV GOOGLE_APPLICATION_CREDENTIALS=/app/firestore-key.json
-ENV PORT=8080
-
-# CLOUD RUN: Add health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8080/swagger || exit 1
 
 ENTRYPOINT ["dotnet", "Basket.Filter.dll"]
