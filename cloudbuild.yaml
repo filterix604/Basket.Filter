@@ -1,0 +1,43 @@
+# cloudbuild.yaml (Enhanced)
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:$BUILD_ID',
+      '-t', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest',
+      '.'
+    ]
+
+  # Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:$BUILD_ID']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest']
+
+  # Deploy to Cloud Run with extended timeout
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'basket-filter-api',
+      '--image', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:$BUILD_ID',
+      '--region', 'asia-south1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--memory', '1Gi',
+      '--cpu', '1',
+      '--max-instances', '10',
+      '--min-instances', '0',
+      '--timeout', '900',
+      '--cpu-throttling',
+      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,PORT=8080,GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+    ]
+
+images:
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:$BUILD_ID'
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
