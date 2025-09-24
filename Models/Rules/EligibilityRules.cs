@@ -17,7 +17,6 @@ namespace Basket.Filter.Models.Rules
         [FirestoreProperty("countryCode")]
         public string CountryCode { get; set; }
 
-        // CHANGED: decimal to double
         [FirestoreProperty("maxDailyAmount")]
         public double MaxDailyAmount { get; set; } = 25.00;
 
@@ -55,7 +54,6 @@ namespace Basket.Filter.Models.Rules
         [FirestoreProperty("countryName")]
         public string CountryName { get; set; }
 
-        // CHANGED: decimal to double
         [FirestoreProperty("defaultDailyLimit")]
         public double DefaultDailyLimit { get; set; }
 
@@ -111,7 +109,6 @@ namespace Basket.Filter.Models.Rules
         [FirestoreProperty("eligibilityReason")]
         public string EligibilityReason { get; set; }
 
-        // CHANGED: decimal? to double?
         [FirestoreProperty("maxAlcoholPercentage")]
         public double? MaxAlcoholPercentage { get; set; }
 
