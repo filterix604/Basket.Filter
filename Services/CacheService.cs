@@ -44,7 +44,7 @@ namespace Basket.Filter.Services
                 {
                     _statistics.TotalHits++;
                     _statistics.MemoryHits++;
-                    _logger.LogDebug("Cache HIT (Memory): {Key}", key);
+                    _logger.LogInformation("Cache HIT (Memory): {Key}", key);
                     return cachedItem;
                 }
 
@@ -56,7 +56,7 @@ namespace Basket.Filter.Services
                     {
                         _statistics.TotalHits++;
                         _statistics.RedisHits++;
-                        _logger.LogDebug("Cache HIT (Redis): {Key}", key);
+                        _logger.LogInformation("Cache HIT (Redis): {Key}", key);
 
                         // Store in L1 for faster access
                         await SetInMemoryAsync(key, redisItem, _config.InMemory.DefaultExpiration);
@@ -65,7 +65,7 @@ namespace Basket.Filter.Services
                 }
 
                 _statistics.TotalMisses++;
-                _logger.LogDebug("Cache MISS: {Key}", key);
+                _logger.LogInformation("Cache MISS: {Key}", key);
                 return null;
             }
             catch (Exception ex)
@@ -93,7 +93,7 @@ namespace Basket.Filter.Services
                     await SetInRedisAsync(key, value, exp);
                 }
 
-                _logger.LogDebug("Cache SET: {Key} (TTL: {Expiration})", key, exp);
+                _logger.LogInformation("Cache SET: {Key} (TTL: {Expiration})", key, exp);
             }
             catch (Exception ex)
             {
@@ -114,7 +114,7 @@ namespace Basket.Filter.Services
                     await RemoveFromRedisAsync(key);
                 }
 
-                _logger.LogDebug("Cache REMOVE: {Key}", key);
+                _logger.LogInformation("Cache REMOVE: {Key}", key);
             }
             catch (Exception ex)
             {
@@ -211,14 +211,18 @@ namespace Basket.Filter.Services
 		{
 			try
 			{
+                _logger.LogInformation("Getting Key from Redis");
 				if (_redisDatabase == null) return null;
 
 				var value = await _redisDatabase.StringGetAsync(key);
 				if (!value.HasValue) return null;
 
-				return JsonSerializer.Deserialize<T>(value!);
-			}
-			catch (Exception ex)
+                
+                var redisValue = JsonSerializer.Deserialize<T>(value!);
+                _logger.LogInformation("Deserialize Value: {Value}", redisValue);
+                return redisValue;
+            }
+            catch (Exception ex)
 			{
 				_logger.LogError(ex, "Redis GET error for key: {Key}", key);
 				return null;
