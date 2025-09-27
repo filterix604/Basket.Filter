@@ -16,7 +16,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest']
 
-  # Deploy to Cloud Run 
+  # Deploy to Cloud Run with Redis support 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
@@ -30,6 +30,8 @@ steps:
       '--max-instances', '10',
       '--min-instances', '0',
       '--timeout', '900',
+      '--vpc-connector', 'basket-filter-connector',              # ADD THIS
+      '--vpc-egress', 'private-ranges-only',                     # ADD THIS
       '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production'
     ]
 

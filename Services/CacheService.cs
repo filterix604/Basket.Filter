@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using System.Text.Json;
 using Basket.Filter.Models;
 using Basket.Filter.Services.Interface;
+using StackExchange.Redis;
 
 namespace Basket.Filter.Services
 {
@@ -12,17 +13,24 @@ namespace Basket.Filter.Services
         private readonly ILogger<CacheService> _logger;
         private readonly CacheConfig _config;
         private readonly CacheStatistics _statistics;
+		private readonly IDatabase? _redisDatabase;
 
-        public CacheService(
+		public CacheService(
             IMemoryCache memoryCache,
             ILogger<CacheService> logger,
-            IOptions<CacheConfig> config)
+            IOptions<CacheConfig> config,
+			IConnectionMultiplexer? redis = null)
         {
             _memoryCache = memoryCache;
             _logger = logger;
             _config = config.Value;
             _statistics = new CacheStatistics();
-        }
+			if (_config.UseRedis && redis != null)
+			{
+				_redisDatabase = redis.GetDatabase();
+				_logger.LogInformation("Redis connected successfully");
+			}
+		}
 
         public async Task<T?> GetAsync<T>(string key) where T : class
         {
@@ -197,30 +205,69 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Redis methods 
-        private async Task<T?> GetFromRedisAsync<T>(string key) where T : class
-        {
-            // TODO: Implement Redis GET
-            await Task.CompletedTask;
-            return null;
-        }
+		// Redis methods 
+		// Redis methods implementation
+		private async Task<T?> GetFromRedisAsync<T>(string key) where T : class
+		{
+			try
+			{
+				if (_redisDatabase == null) return null;
 
-        private async Task SetInRedisAsync<T>(string key, T value, TimeSpan expiration) where T : class
-        {
-            // TODO: Implement Redis SET
-            await Task.CompletedTask;
-        }
+				var value = await _redisDatabase.StringGetAsync(key);
+				if (!value.HasValue) return null;
 
-        private async Task RemoveFromRedisAsync(string key)
-        {
-            // TODO: Implement Redis REMOVE
-            await Task.CompletedTask;
-        }
+				return JsonSerializer.Deserialize<T>(value!);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Redis GET error for key: {Key}", key);
+				return null;
+			}
+		}
 
-        private async Task ClearRedisAsync()
-        {
-            // TODO: Implement Redis CLEAR
-            await Task.CompletedTask;
-        }
-    }
+		private async Task SetInRedisAsync<T>(string key, T value, TimeSpan expiration) where T : class
+		{
+			try
+			{
+				if (_redisDatabase == null) return;
+
+				var json = JsonSerializer.Serialize(value);
+				await _redisDatabase.StringSetAsync(key, json, expiration);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Redis SET error for key: {Key}", key);
+			}
+		}
+
+		private async Task RemoveFromRedisAsync(string key)
+		{
+			try
+			{
+				if (_redisDatabase == null) return;
+
+				await _redisDatabase.KeyDeleteAsync(key);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Redis REMOVE error for key: {Key}", key);
+			}
+		}
+
+		private async Task ClearRedisAsync()
+		{
+			try
+			{
+				if (_redisDatabase == null) return;
+
+				var server = _redisDatabase.Multiplexer.GetServer(_redisDatabase.Multiplexer.GetEndPoints().First());
+				await server.FlushDatabaseAsync();
+				_logger.LogWarning("Redis cache cleared");
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Redis CLEAR error");
+			}
+		}
+	}
 }

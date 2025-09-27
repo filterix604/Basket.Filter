@@ -5,6 +5,7 @@ using Basket.Filter.Infrastructure.Services;
 using Basket.Filter.Services.Interfaces;
 using Basket.Filter.Mappers;
 using Basket.Filter.Models;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +30,27 @@ builder.Services.AddMemoryCache(options =>
 {
     options.SizeLimit = 512 * 1024 * 1024; // 512MB for Cloud Run
 });
+
+// Add Redis connection (only if UseRedis is true)
+var cacheConfig = builder.Configuration.GetSection("Cache").Get<CacheConfig>();
+if (cacheConfig?.UseRedis == true)
+{
+	builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
+	{
+		var logger = provider.GetRequiredService<ILogger<IConnectionMultiplexer>>();
+		try
+		{
+			var connection = ConnectionMultiplexer.Connect(cacheConfig.Redis.ConnectionString);
+			logger.LogInformation("Connected to Google Cloud Redis");
+			return connection;
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex, "Failed to connect to Google Cloud Redis");
+			throw;
+		}
+	});
+}
 
 // Services registration (cleaned up duplicates)
 builder.Services.AddControllers();
