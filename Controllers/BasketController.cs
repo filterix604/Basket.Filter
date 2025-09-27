@@ -31,12 +31,23 @@ namespace Basket.Filter.Controllers
         }
 
         [HttpPost("filter")]
-        public async Task<BasketFilteringResponse> FilterBasket([FromBody] BasketRequest request)
+        public async Task<ActionResult<BasketFilteringResponse>> FilterBasket([FromBody] BasketRequest request)
         {
-            await _dataStorageService.StoreBasketRequestAsync(request);
-
-            return await _filteringService.FilterBasketAsync(request);
-        }
+            try 
+            {
+				await _dataStorageService.StoreBasketRequestAsync(request);
+				var result = await _filteringService.FilterBasketAsync(request);
+                return result;
+			}
+			catch (InvalidOperationException ex)
+			{
+				return BadRequest(new { error = ex.Message });
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { error = ex.Message });
+			}
+		}
 
         //TEMPORARY TESTING ENDPOINT - REMOVE AFTER CACHE TESTING
         [HttpGet("cache-stats")]
