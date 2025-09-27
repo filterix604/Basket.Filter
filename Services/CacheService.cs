@@ -213,11 +213,11 @@ namespace Basket.Filter.Services
 			{
                 _logger.LogInformation("Getting Key from Redis");
 				if (_redisDatabase == null) return null;
-
-				var value = await _redisDatabase.StringGetAsync(key);
+                _logger.LogInformation("Connecting to db...");
+                var value = await _redisDatabase.StringGetAsync(key);
 				if (!value.HasValue) return null;
+                _logger.LogInformation("Started deserializing");
 
-                
                 var redisValue = JsonSerializer.Deserialize<T>(value!);
                 _logger.LogInformation("Deserialize Value: {Value}", redisValue);
                 return redisValue;
