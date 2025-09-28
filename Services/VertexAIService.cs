@@ -1,34 +1,42 @@
-﻿using Microsoft.Extensions.Options;
+﻿using Google.Cloud.AIPlatform.V1;
+using Google.Protobuf.WellKnownTypes;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
-using System.Net.Http;
-using System.Text;
 using Basket.Filter.Models;
 using Basket.Filter.Services.Interface;
 using Basket.Filter.Models.AIModels;
+using ProtobufValue = Google.Protobuf.WellKnownTypes.Value;  // For building requests
+using AIPlatformValue = Google.Cloud.AIPlatform.V1.Value;    // For parsing responses (if needed)
 
 namespace Basket.Filter.Services
 {
-    public class VertexAIService : IVertexAIService, IDisposable
+    public class VertexAIService : IVertexAIService
     {
+        private readonly PredictionServiceClient? _predictionClient;
         private readonly VertexAIConfig _config;
         private readonly ILogger<VertexAIService> _logger;
-        private readonly HttpClient _httpClient;
-        private string? _accessToken;
-        private DateTime _tokenExpiry = DateTime.MinValue;
 
         public VertexAIService(
             IOptions<VertexAIConfig> config,
-            ILogger<VertexAIService> logger,
-            HttpClient httpClient)
+            ILogger<VertexAIService> logger)
         {
             _config = config.Value;
             _logger = logger;
-            _httpClient = httpClient;
 
             if (_config.EnableAI)
             {
-                _logger.LogInformation("Vertex AI initialized: {Model} in {Location}",
-                    _config.ModelName, _config.Location);
+                try
+                {
+                    // Use default Google Cloud credentials (from Cloud Run service account)
+                    _predictionClient = new PredictionServiceClientBuilder().Build();
+                    _logger.LogInformation("Vertex AI initialized: {Model} in {Location}",
+                        _config.ModelName, _config.Location);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to initialize Vertex AI");
+                    _predictionClient = null;
+                }
             }
             else
             {
@@ -38,7 +46,7 @@ namespace Basket.Filter.Services
 
         public async Task<AIClassificationResult> ClassifyProductAsync(AIClassificationRequest request)
         {
-            if (!_config.EnableAI)
+            if (!_config.EnableAI || _predictionClient == null)
             {
                 return GetFallbackResult("AI service not available");
             }
@@ -49,7 +57,7 @@ namespace Basket.Filter.Services
 
                 var result = await CallVertexAIWithRetryAsync(request);
 
-                _logger.LogInformation("AI Result: {ProductName} -> {IsEligible} ({Confidence:F2})",
+                _logger.LogInformation("AI Result: {ProductName} → {IsEligible} ({Confidence:F2})",
                     request.ProductName, result.IsEligible, result.Confidence);
 
                 return result;
@@ -94,8 +102,8 @@ namespace Basket.Filter.Services
 
             try
             {
-                var token = await GetAccessTokenAsync();
-                return !string.IsNullOrEmpty(token);
+                // Test basic connectivity without expensive API call
+                return _predictionClient != null;
             }
             catch
             {
@@ -136,79 +144,36 @@ namespace Basket.Filter.Services
 
         private async Task<AIClassificationResult> CallVertexAIAsync(AIClassificationRequest request)
         {
-            var accessToken = await GetAccessTokenAsync();
+            // Use Gemini API directly (no custom endpoint)
+            var model = $"projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}";
+
             var prompt = BuildOptimizedPrompt(request);
 
-            // Correct Gemini API endpoint - use generateContent instead of predict
-            var url = $"https://{_config.Location}-aiplatform.googleapis.com/v1/projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}:generateContent";
+            // FIXED: Use ProtobufValue alias for building request
+            var content = new Struct();
+            content.Fields.Add("content", ProtobufValue.ForString(prompt));
 
-            var requestBody = new
+            var instance = ProtobufValue.ForStruct(content);
+
+            var parameters = new Struct();
+            parameters.Fields.Add("maxOutputTokens", ProtobufValue.ForNumber(_config.MaxTokens));
+            parameters.Fields.Add("temperature", ProtobufValue.ForNumber(_config.Temperature));
+            parameters.Fields.Add("topP", ProtobufValue.ForNumber(0.8));
+
+            var predictRequest = new PredictRequest
             {
-                contents = new[]
-                {
-                    new
-                    {
-                        role = "user",
-                        parts = new[]
-                        {
-                            new { text = prompt }
-                        }
-                    }
-                },
-                generationConfig = new
-                {
-                    maxOutputTokens = _config.MaxTokens,
-                    temperature = _config.Temperature,
-                    topP = 0.8
-                }
+                Endpoint = model,
+                Instances = { instance },
+                Parameters = ProtobufValue.ForStruct(parameters)
             };
 
-            var jsonContent = new StringContent(
-                JsonSerializer.Serialize(requestBody),
-                Encoding.UTF8,
-                "application/json");
-
-            _httpClient.DefaultRequestHeaders.Clear();
-            _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {accessToken}");
-
-            var response = await _httpClient.PostAsync(url, jsonContent);
-            var responseContent = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new Exception($"Gemini API error: {response.StatusCode} - {responseContent}");
-            }
-
-            return ParseResponse(responseContent, request);
-        }
-
-        private async Task<string> GetAccessTokenAsync()
-        {
-            if (!string.IsNullOrEmpty(_accessToken) && DateTime.UtcNow < _tokenExpiry)
-            {
-                return _accessToken;
-            }
-
-            try
-            {
-                var credential = await Google.Apis.Auth.OAuth2.GoogleCredential.GetApplicationDefaultAsync();
-                var scoped = credential.CreateScoped("https://www.googleapis.com/auth/cloud-platform");
-
-                var accessTokenTask = scoped.UnderlyingCredential.GetAccessTokenForRequestAsync();
-                _accessToken = await accessTokenTask;
-                _tokenExpiry = DateTime.UtcNow.AddMinutes(50);
-
-                return _accessToken;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to get access token");
-                throw;
-            }
+            var response = await _predictionClient!.PredictAsync(predictRequest);
+            return ParseResponse(response, request);
         }
 
         private string BuildOptimizedPrompt(AIClassificationRequest request)
         {
+            // Shorter, more focused prompt to reduce token usage
             return $@"Analyze this product for meal voucher eligibility in {request.CountryCode}:
 
 Product: {request.ProductName}
@@ -234,41 +199,17 @@ Respond with ONLY this JSON:
             };
         }
 
-        private AIClassificationResult ParseResponse(string responseContent, AIClassificationRequest request)
+        private AIClassificationResult ParseResponse(PredictResponse response, AIClassificationRequest request)
         {
             try
             {
-                using var document = JsonDocument.Parse(responseContent);
-                var root = document.RootElement;
-
-                if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                var prediction = response.Predictions.FirstOrDefault();
+                if (prediction == null)
                 {
-                    var candidate = candidates[0];
-                    if (candidate.TryGetProperty("content", out var content) &&
-                        content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
-                    {
-                        var part = parts[0];
-                        if (part.TryGetProperty("text", out var textElement))
-                        {
-                            var text = textElement.GetString();
-                            return ParseAIResponse(text, request);
-                        }
-                    }
+                    throw new Exception("No predictions in response");
                 }
 
-                throw new Exception("No valid response content found");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to parse Gemini response: {Response}", responseContent);
-                return GetFallbackResult($"Parse error: {ex.Message}");
-            }
-        }
-
-        private AIClassificationResult ParseAIResponse(string content, AIClassificationRequest request)
-        {
-            try
-            {
+                string content = ExtractContent(prediction);
                 if (string.IsNullOrEmpty(content))
                 {
                     throw new Exception("Empty response from AI");
@@ -296,6 +237,45 @@ Respond with ONLY this JSON:
                 _logger.LogError(ex, "Failed to parse AI response");
                 return GetFallbackResult($"Parse error: {ex.Message}");
             }
+        }
+
+        // FIXED: Use ProtobufValue for response parsing (this is what response.Predictions returns)
+        private string ExtractContent(ProtobufValue prediction)
+        {
+            if (prediction.KindCase == ProtobufValue.KindOneofCase.StructValue)
+            {
+                var fields = prediction.StructValue.Fields;
+
+                // Try common response fields
+                foreach (var field in new[] { "content", "text", "output" })
+                {
+                    if (fields.ContainsKey(field) &&
+                        fields[field].KindCase == ProtobufValue.KindOneofCase.StringValue)
+                    {
+                        return fields[field].StringValue;
+                    }
+                }
+
+                // Try candidates structure
+                if (fields.ContainsKey("candidates") &&
+                    fields["candidates"].KindCase == ProtobufValue.KindOneofCase.ListValue &&
+                    fields["candidates"].ListValue.Values.Count > 0)
+                {
+                    var candidate = fields["candidates"].ListValue.Values[0];
+                    if (candidate.KindCase == ProtobufValue.KindOneofCase.StructValue &&
+                        candidate.StructValue.Fields.ContainsKey("content"))
+                    {
+                        return candidate.StructValue.Fields["content"].StringValue;
+                    }
+                }
+            }
+
+            if (prediction.KindCase == ProtobufValue.KindOneofCase.StringValue)
+            {
+                return prediction.StringValue;
+            }
+
+            return prediction.ToString();
         }
 
         private string ExtractJsonFromContent(string content)
@@ -348,11 +328,6 @@ Respond with ONLY this JSON:
                 ModelVersion = _config.ModelName,
                 DetectedCategory = "fallback"
             };
-        }
-
-        public void Dispose()
-        {
-            _httpClient?.Dispose();
         }
     }
 }
