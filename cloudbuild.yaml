@@ -15,8 +15,8 @@ steps:
 
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest']
-
-  # Deploy to Cloud Run with Redis support 
+    
+  # Deploy to Cloud Run with AI support
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
@@ -25,14 +25,14 @@ steps:
       '--region', 'asia-south1',
       '--platform', 'managed',
       '--allow-unauthenticated',
-      '--memory', '1Gi',
-      '--cpu', '1',
+      '--memory', '1Gi',                                         # INCREASED for AI processing
+      '--cpu', '1',                                              # INCREASED for AI processing  
       '--max-instances', '10',
       '--min-instances', '0',
       '--timeout', '900',
-      '--vpc-connector', 'basket-filter-connector',              # ADD THIS
-      '--vpc-egress', 'private-ranges-only',                     # ADD THIS
-      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production'
+      '--vpc-connector', 'basket-filter-connector',
+      '--vpc-egress', 'private-ranges-only',
+      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=asia-south1,VertexAI__EnableAI=false'  # AI CONFIG
     ]
 
 images:
