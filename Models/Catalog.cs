@@ -1,4 +1,5 @@
-﻿using Google.Cloud.Firestore;
+﻿using Basket.Filter.Models.AIModels;
+using Google.Cloud.Firestore;
 using System.Text.Json.Serialization;
 
 namespace Basket.Filter.Models
@@ -35,6 +36,17 @@ namespace Basket.Filter.Models
 
         [FirestoreProperty]
         public DateTime UpdatedAt { get; set; }
+
+        [FirestoreProperty("aiClassification")]
+        public AIClassificationData? AIClassification { get; set; }
+
+        // Additional metadata
+        [FirestoreProperty("tags")]
+        public List<string> Tags { get; set; } = new();
+
+        [FirestoreProperty("attributes")]
+        public Dictionary<string, object> Attributes { get; set; } = new();
+
     }
 
     public class CatalogUploadRequest

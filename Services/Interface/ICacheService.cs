@@ -1,5 +1,6 @@
 ﻿// Services/Interface/ICacheService.cs
 using Basket.Filter.Models;
+using Basket.Filter.Models.AIModels;
 
 namespace Basket.Filter.Services.Interface
 {
@@ -19,5 +20,12 @@ namespace Basket.Filter.Services.Interface
         // Utilities
         Task<bool> ExistsAsync(string key);
         CacheStatistics GetStatistics();
+       
+        // AI classification cache
+        Task<AIClassificationData?> GetAIClassificationAsync(string sku);
+        Task SetAIClassificationAsync(string sku, AIClassificationData classification, TimeSpan? expiration = null);
+
+        // Batch operations
+        Task<Dictionary<string, CatalogItem>> GetCatalogItemsBatchAsync(List<string> skus);
     }
 }

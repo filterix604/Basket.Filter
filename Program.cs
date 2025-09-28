@@ -5,7 +5,10 @@ using Basket.Filter.Infrastructure.Services;
 using Basket.Filter.Services.Interfaces;
 using Basket.Filter.Mappers;
 using Basket.Filter.Models;
+using Basket.Filter.Health;
 using StackExchange.Redis;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Basket.Filter.Models.Rules;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +28,8 @@ builder.Services.AddSingleton(FirestoreDb.Create(projectId));
 // Cache configuration
 builder.Services.Configure<CacheConfig>(builder.Configuration.GetSection("Cache"));
 
+// AI and Business Rules configuration
+builder.Services.Configure<VertexAIConfig>(builder.Configuration.GetSection("VertexAI"));
 // Memory cache (increased for production)
 builder.Services.AddMemoryCache(options =>
 {
@@ -35,21 +40,26 @@ builder.Services.AddMemoryCache(options =>
 var cacheConfig = builder.Configuration.GetSection("Cache").Get<CacheConfig>();
 if (cacheConfig?.UseRedis == true)
 {
-	builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
-	{
-		var logger = provider.GetRequiredService<ILogger<IConnectionMultiplexer>>();
-		try
-		{
-			var connection = ConnectionMultiplexer.Connect(cacheConfig.Redis.ConnectionString);
-			logger.LogInformation("Connected to Google Cloud Redis");
-			return connection;
-		}
-		catch (Exception ex)
-		{
-			logger.LogError(ex, "Failed to connect to Google Cloud Redis");
-			throw;
-		}
-	});
+    builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
+    {
+        var logger = provider.GetRequiredService<ILogger<IConnectionMultiplexer>>();
+        try
+        {
+            var connection = ConnectionMultiplexer.Connect(cacheConfig.Redis.ConnectionString);
+            logger.LogInformation("Connected to Google Cloud Redis");
+            return connection;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to connect to Google Cloud Redis");
+            throw;
+        }
+    });
+}
+else
+{
+    // Register null for services that expect IConnectionMultiplexer
+    builder.Services.AddSingleton<IConnectionMultiplexer?>(provider => null);
 }
 
 // Services registration (cleaned up duplicates)
@@ -69,32 +79,67 @@ builder.Services.AddScoped<IBusinessRulesEngine, BusinessRulesEngine>();
 builder.Services.AddScoped<IMerchantOnboardingService, MerchantOnboardingService>();
 builder.Services.AddScoped<IBasketRequestMapper, BasketRequestMapper>();
 
+// AI Service
+builder.Services.AddScoped<IVertexAIService, VertexAIService>();
+
+// Health checks
+builder.Services.AddHealthChecks()
+    .AddCheck<VertexAIHealthCheck>("vertex-ai")
+    .AddCheck("firestore", () => HealthCheckResult.Healthy($"Firestore: {projectId}"))
+    .AddCheck("redis-cache", () =>
+    {
+        if (cacheConfig?.UseRedis == true)
+        {
+            return HealthCheckResult.Healthy($"Redis: {cacheConfig.Redis.InstanceName}");
+        }
+        return HealthCheckResult.Healthy("Redis cache disabled");
+    });
+
 var app = builder.Build();
 
 // CLOUD RUN: Always enable Swagger for demo
 app.UseSwagger();
 app.UseSwaggerUI();
 
-
 app.UseAuthorization();
 app.MapControllers();
+
+// Health check endpoint
+app.MapHealthChecks("/health");
+
+// Startup validation
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+var aiConfig = app.Configuration.GetSection("VertexAI").Get<VertexAIConfig>();
+
+logger.LogInformation("Starting Basket Filter API");
+logger.LogInformation("Project ID: {ProjectId}", projectId);
+logger.LogInformation("Cache: Redis={RedisEnabled}", cacheConfig?.UseRedis ?? false);
+
+if (aiConfig?.EnableAI == true)
+{
+    logger.LogInformation("AI Service: ENABLED (Model: {Model})", aiConfig.ModelName);
+}
+else
+{
+    logger.LogInformation("AI Service: DISABLED");
+}
 
 // CLOUD RUN: Async data seeding (non-blocking)
 _ = Task.Run(async () =>
 {
     using var scope = app.Services.CreateScope();
     var seedingService = scope.ServiceProvider.GetRequiredService<IDataSeedingService>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var seedLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
     try
     {
-        logger.LogInformation("Starting data seeding...");
+        seedLogger.LogInformation("Starting data seeding...");
         await seedingService.SeedInitialDataAsync();
-        logger.LogInformation("Data seeding completed successfully");
+        seedLogger.LogInformation("Data seeding completed successfully");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error during data seeding");
+        seedLogger.LogError(ex, "Error during data seeding");
     }
 });
 

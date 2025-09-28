@@ -1,4 +1,5 @@
 ﻿using Basket.Filter.Models;
+using Basket.Filter.Models.AIModels;
 
 namespace Basket.Filter.Services.Interface
 {
@@ -10,5 +11,8 @@ namespace Basket.Filter.Services.Interface
         Task<List<CatalogItem>> SearchItemsAsync(string searchTerm);
         Task<bool> DeleteCatalogAsync();
         Task<int> GetCatalogCountAsync();
+        Task<CatalogItem> SaveOrUpdateCatalogItemAsync(CatalogItem item);
+        Task UpdateAIClassificationAsync(string sku, AIClassificationData classification);
+        Task<Dictionary<string, CatalogItem>> GetItemsBatchAsync(List<string> skus);
     }
 }

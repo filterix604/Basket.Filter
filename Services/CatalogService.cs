@@ -2,6 +2,7 @@
 using Basket.Filter.Models;
 using Google.Cloud.Firestore;
 using System.Text.Json;
+using Basket.Filter.Models.AIModels;
 
 namespace Basket.Filter.Services
 {
@@ -9,16 +10,160 @@ namespace Basket.Filter.Services
     {
         private readonly FirestoreDb _firestore;
         private readonly ILogger<CatalogService> _logger;
-        private readonly ICacheService _cacheService; 
+        private readonly ICacheService _cacheService;
         private const string CATALOG_COLLECTION = "catalog_items";
 
-        public CatalogService(FirestoreDb firestore, ILogger<CatalogService> logger, ICacheService cacheService)
+        public CatalogService(
+            FirestoreDb firestore,
+            ILogger<CatalogService> logger,
+            ICacheService cacheService)
         {
             _firestore = firestore;
             _logger = logger;
             _cacheService = cacheService;
         }
 
+        // Enhanced GetItemBySkuAsync with AI classification support
+        public async Task<CatalogItem?> GetItemBySkuAsync(string sku)
+        {
+            try
+            {
+                // Step 1: Check cache first (L1 → L2)
+                var cachedItem = await _cacheService.GetCatalogItemAsync(sku);
+                if (cachedItem != null)
+                {
+                    _logger.LogDebug("Catalog cache HIT: {Sku}", sku);
+                    return cachedItem;
+                }
+
+                // Step 2: Cache miss - get from Firestore
+                _logger.LogDebug("Catalog cache MISS: {Sku} - Checking Firestore", sku);
+                var doc = await _firestore.Collection(CATALOG_COLLECTION).Document(sku).GetSnapshotAsync();
+
+                if (!doc.Exists)
+                {
+                    _logger.LogDebug("Firestore MISS: {Sku}", sku);
+                    return null;
+                }
+
+                var item = doc.ConvertTo<CatalogItem>();
+                _logger.LogDebug("Firestore HIT: {Sku}", sku);
+
+                // Step 3: Store in cache for next time
+                await _cacheService.SetCatalogItemAsync(sku, item);
+
+                return item;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting catalog item: {Sku}", sku);
+                return null;
+            }
+        }
+
+        // NEW: Enhanced save method for AI classifications
+        public async Task<CatalogItem> SaveOrUpdateCatalogItemAsync(CatalogItem item)
+        {
+            try
+            {
+                item.UpdatedAt = DateTime.UtcNow;
+                if (item.CreatedAt == default)
+                {
+                    item.CreatedAt = DateTime.UtcNow;
+                }
+
+                var docRef = _firestore.Collection(CATALOG_COLLECTION).Document(item.Sku);
+                await docRef.SetAsync(item);
+
+                // Update cache
+                await _cacheService.SetCatalogItemAsync(item.Sku, item);
+
+                _logger.LogInformation("Saved catalog item: {Sku} (AI: {HasAI})",
+                    item.Sku, item.AIClassification != null);
+
+                return item;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving catalog item: {Sku}", item.Sku);
+                throw;
+            }
+        }
+
+        // NEW: Update AI classification for existing item
+        public async Task UpdateAIClassificationAsync(string sku, AIClassificationData classification)
+        {
+            try
+            {
+                var docRef = _firestore.Collection(CATALOG_COLLECTION).Document(sku);
+
+                await docRef.UpdateAsync(new Dictionary<string, object>
+                {
+                    ["AIClassification"] = classification,
+                    ["UpdatedAt"] = DateTime.UtcNow
+                });
+
+                // Remove from cache to force refresh
+                await _cacheService.RemoveCatalogItemAsync(sku);
+
+                _logger.LogInformation("Updated AI classification: {Sku}", sku);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating AI classification: {Sku}", sku);
+                throw;
+            }
+        }
+
+        // Enhanced batch operations
+        public async Task<Dictionary<string, CatalogItem>> GetItemsBatchAsync(List<string> skus)
+        {
+            var results = new Dictionary<string, CatalogItem>();
+
+            // First, check cache for all items
+            var cachedItems = await _cacheService.GetCatalogItemsBatchAsync(skus);
+            foreach (var kvp in cachedItems)
+            {
+                results[kvp.Key] = kvp.Value;
+            }
+
+            // Get remaining items from Firestore
+            var missingSkus = skus.Except(cachedItems.Keys).ToList();
+            if (missingSkus.Any())
+            {
+                _logger.LogDebug("Fetching {Count} items from Firestore", missingSkus.Count);
+
+                var tasks = missingSkus.Select(async sku =>
+                {
+                    try
+                    {
+                        var doc = await _firestore.Collection(CATALOG_COLLECTION).Document(sku).GetSnapshotAsync();
+                        if (doc.Exists)
+                        {
+                            var item = doc.ConvertTo<CatalogItem>();
+                            // Cache it for next time
+                            await _cacheService.SetCatalogItemAsync(sku, item);
+                            return new KeyValuePair<string, CatalogItem?>(sku, item);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error fetching item: {Sku}", sku);
+                    }
+                    return new KeyValuePair<string, CatalogItem?>(sku, null);
+                });
+
+                var batchResults = await Task.WhenAll(tasks);
+                foreach (var result in batchResults.Where(r => r.Value != null))
+                {
+                    results[result.Key] = result.Value!;
+                }
+            }
+
+            return results;
+        }
+
+        // Existing methods remain unchanged
         public async Task<CatalogUploadResponse> UploadCatalogJsonAsync(IFormFile file)
         {
             var response = new CatalogUploadResponse();
@@ -71,7 +216,7 @@ namespace Basket.Filter.Services
                     {
                         response.FailedItems++;
                         response.Errors.Add($"Failed to upload SKU {item.Sku}: {ex.Message}");
-                        _logger.LogError(ex, "Error uploading item {Sku}", item.Sku);
+                        _logger.LogError(ex, "Error uploading item: {Sku}", item.Sku);
                     }
                 }
 
@@ -91,39 +236,7 @@ namespace Basket.Filter.Services
             }
         }
 
-        public async Task<CatalogItem?> GetItemBySkuAsync(string sku)
-        {
-            try
-            {
-                // Step 1: Check cache first
-                var cachedItem = await _cacheService.GetCatalogItemAsync(sku);
-                if (cachedItem != null)
-                {
-                    return cachedItem;
-                }
-
-                // Step 2: Cache miss - get from Firestore
-                var doc = await _firestore.Collection(CATALOG_COLLECTION).Document(sku).GetSnapshotAsync();
-
-                if (!doc.Exists)
-                {
-                    return null;
-                }
-
-                var item = doc.ConvertTo<CatalogItem>();
-
-                // Step 3: Store in cache
-                await _cacheService.SetCatalogItemAsync(sku, item);
-
-                return item;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting item by SKU: {Sku}", sku);
-                return null;
-            }
-        }
-
+        // Keep all your existing methods (GetItemsByCategoryAsync, SearchItemsAsync, etc.)
         public async Task<List<CatalogItem>> GetItemsByCategoryAsync(string category)
         {
             try
@@ -183,7 +296,6 @@ namespace Basket.Filter.Services
                     batch.Delete(doc.Reference);
                     batchCount++;
 
-                    // Commit batch every 500 items (Firestore limit)
                     if (batchCount >= 500)
                     {
                         await batch.CommitAsync();
@@ -192,7 +304,6 @@ namespace Basket.Filter.Services
                     }
                 }
 
-                // Commit remaining items
                 if (batchCount > 0)
                 {
                     await batch.CommitAsync();
@@ -222,6 +333,7 @@ namespace Basket.Filter.Services
             }
         }
 
+        // Keep your existing private methods
         private async Task<List<CatalogItem>> ParseJsonFileAsync(IFormFile file)
         {
             var items = new List<CatalogItem>();
@@ -259,7 +371,6 @@ namespace Basket.Filter.Services
                             ContainsAlcohol = GetBoolValue(rawItem, "contains_alcohol")
                         };
 
-                        // Skip items with missing required fields
                         if (string.IsNullOrEmpty(item.Sku) || string.IsNullOrEmpty(item.Name))
                         {
                             _logger.LogWarning("Skipping item with missing SKU or Name");
@@ -327,7 +438,6 @@ namespace Basket.Filter.Services
 
             var category = originalCategory.ToLowerInvariant();
 
-            // Normalize to standard categories
             if (category.Contains("meal") || category.Contains("pizza") || category.Contains("burger") ||
                 category.Contains("sandwich") || category.Contains("prepared") || category.Contains("ready"))
                 return "prepared_meal";
@@ -346,16 +456,16 @@ namespace Basket.Filter.Services
 
             if (category.Contains("dairy") || category.Contains("milk") || category.Contains("cheese") ||
                 category.Contains("yogurt"))
-                return "beverage"; // Dairy often eligible like beverages
+                return "beverage";
 
             if (category.Contains("bakery") || category.Contains("bread") || category.Contains("pastry"))
-                return "prepared_meal"; // Bakery items often treated as prepared meals
+                return "prepared_meal";
 
             if (category.Contains("hygiene") || category.Contains("personal_care") || category.Contains("soap") ||
                 category.Contains("shampoo") || category.Contains("cleaning"))
                 return "non_food";
 
-            return "non_food"; // Default for unknown categories
+            return "non_food";
         }
     }
 }

@@ -1,71 +1,130 @@
-﻿using Basket.Filter.Models;
+﻿using Microsoft.AspNetCore.Mvc;
+using Basket.Filter.Models;
 using Basket.Filter.Services.Interface;
-using Basket.Filter.Services.Interfaces;
-using Google.Cloud.Firestore;
-using Microsoft.AspNetCore.Mvc;
+using Basket.Filter.Models.AIModels;
 
 namespace Basket.Filter.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class BasketController : ControllerBase
+    public class BasketFilterController : ControllerBase
     {
-        private readonly IBasketFilteringService _filteringService;
-        private readonly IEligibilityRulesService _rulesService;
-        private readonly FirestoreDb _firestore;
-        private readonly IDataStorageService _dataStorageService;
-        private readonly ICacheService _cacheService; //ADD THIS - For cache stats testing
+        private readonly IBasketFilteringService _basketFilteringService;
+        private readonly ICacheService _cacheService;
+        private readonly IVertexAIService _vertexAIService;
+        private readonly ILogger<BasketFilterController> _logger;
 
-        public BasketController(
-            IBasketFilteringService filteringService,
-            IEligibilityRulesService rulesService,
-            FirestoreDb firestore,
-            IDataStorageService dataStorageService,
-            ICacheService cacheService) // ADD THIS - For cache stats testing
+        public BasketFilterController(
+            IBasketFilteringService basketFilteringService,
+            ICacheService cacheService,
+            IVertexAIService vertexAIService,
+            ILogger<BasketFilterController> logger)
         {
-            _filteringService = filteringService;
-            _rulesService = rulesService;
-            _firestore = firestore;
-            _dataStorageService = dataStorageService;
-            _cacheService = cacheService; // ADD THIS - For cache stats testing
+            _basketFilteringService = basketFilteringService;
+            _cacheService = cacheService;
+            _vertexAIService = vertexAIService;
+            _logger = logger;
         }
 
         [HttpPost("filter")]
         public async Task<ActionResult<BasketFilteringResponse>> FilterBasket([FromBody] BasketRequest request)
         {
-            try 
+            try
             {
-				await _dataStorageService.StoreBasketRequestAsync(request);
-				var result = await _filteringService.FilterBasketAsync(request);
-                return result;
-			}
-			catch (InvalidOperationException ex)
-			{
-				return BadRequest(new { error = ex.Message });
-			}
-			catch (Exception ex)
-			{
-				return StatusCode(500, new { error = ex.Message });
-			}
-		}
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
 
-        //TEMPORARY TESTING ENDPOINT - REMOVE AFTER CACHE TESTING
-        [HttpGet("cache-stats")]
-        public IActionResult GetCacheStats()
-        {
-            var stats = _cacheService.GetStatistics();
-            return Ok(new
+                _logger.LogInformation("Received basket filter request: {BasketId} with {ItemCount} items",
+                    request.TransactionData.BasketId, request.BasketItems.Count);
+
+                var result = await _basketFilteringService.FilterBasketAsync(request);
+
+                _logger.LogInformation("Basket filter response: {BasketId} - Eligible: €{EligibleAmount}/€{TotalAmount}",
+                    result.BasketId, result.EligibleAmount, result.TotalAmount);
+
+                return Ok(result);
+            }
+            catch (Exception ex)
             {
-                stats.TotalHits,
-                stats.TotalMisses,
-                stats.MemoryHits,
-                stats.RedisHits,
-                stats.HitRatio,
-                stats.LastReset,
-                Message = "Cache statistics - this is a temporary testing endpoint"
-            });
+                _logger.LogError(ex, "Error filtering basket: {BasketId}",
+                    request?.TransactionData?.BasketId ?? "unknown");
+                return StatusCode(500, new { error = "Internal server error", message = ex.Message });
+            }
         }
-        // 🧪 END TEMPORARY TESTING CODE
 
+        [HttpGet("cache/stats")]
+        public ActionResult<CacheStatistics> GetCacheStats()
+        {
+            try
+            {
+                var stats = _cacheService.GetStatistics();
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting cache stats");
+                return StatusCode(500, new { error = "Failed to get cache statistics" });
+            }
+        }
+
+        [HttpDelete("cache/clear")]
+        public async Task<ActionResult> ClearCache()
+        {
+            try
+            {
+                await _cacheService.ClearAsync();
+                _logger.LogInformation("Cache cleared by request");
+                return Ok(new { message = "Cache cleared successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing cache");
+                return StatusCode(500, new { error = "Failed to clear cache" });
+            }
+        }
+
+        [HttpGet("ai/health")]
+        public async Task<ActionResult> CheckAIHealth()
+        {
+            try
+            {
+                var isHealthy = await _vertexAIService.IsServiceHealthyAsync();
+                var modelVersion = await _vertexAIService.GetModelVersionAsync();
+
+                return Ok(new
+                {
+                    healthy = isHealthy,
+                    model = modelVersion,
+                    timestamp = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "AI health check failed");
+                return StatusCode(500, new { healthy = false, error = ex.Message });
+            }
+        }
+
+        [HttpPost("ai/classify")]
+        public async Task<ActionResult<AIClassificationResult>> ClassifyProduct([FromBody] AIClassificationRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(request.ProductName))
+                {
+                    return BadRequest("ProductName is required");
+                }
+
+                var result = await _vertexAIService.ClassifyProductAsync(request);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error classifying product: {ProductName}", request?.ProductName);
+                return StatusCode(500, new { error = "Classification failed", message = ex.Message });
+            }
+        }
     }
 }

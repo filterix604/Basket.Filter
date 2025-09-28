@@ -4,6 +4,7 @@ using System.Text.Json;
 using Basket.Filter.Models;
 using Basket.Filter.Services.Interface;
 using StackExchange.Redis;
+using Basket.Filter.Models.AIModels;
 
 namespace Basket.Filter.Services
 {
@@ -13,72 +14,76 @@ namespace Basket.Filter.Services
         private readonly ILogger<CacheService> _logger;
         private readonly CacheConfig _config;
         private readonly CacheStatistics _statistics;
-		private readonly IDatabase? _redisDatabase;
+        private readonly IDatabase? _redisDatabase;
 
-		public CacheService(
+        public CacheService(
             IMemoryCache memoryCache,
             ILogger<CacheService> logger,
             IOptions<CacheConfig> config,
-			IConnectionMultiplexer? redis = null)
+            IConnectionMultiplexer? redis = null)
         {
             _memoryCache = memoryCache;
             _logger = logger;
             _config = config.Value;
             _statistics = new CacheStatistics();
-			if (_config.UseRedis && redis != null)
-			{
-				_redisDatabase = redis.GetDatabase();
-				_logger.LogInformation("Redis connected successfully");
-			}
-		}
+
+            if (_config.UseRedis && redis != null)
+            {
+                _redisDatabase = redis.GetDatabase();
+                _logger.LogInformation("Redis connected: {InstanceName}", _config.Redis.InstanceName);
+            }
+            else
+            {
+                _logger.LogInformation("Using memory cache only (MaxSize: {MaxSize}MB)",
+                    _config.InMemory.MaxSizeInMB);
+            }
+        }
 
         public async Task<T?> GetAsync<T>(string key) where T : class
         {
-            if (!_config.EnableCaching)
-                return null;
+            if (!_config.EnableCaching) return null;
 
             try
             {
-                // L1: Check in-memory cache
+                // L1: Check memory cache
                 if (_memoryCache.TryGetValue(key, out T? cachedItem))
                 {
                     _statistics.TotalHits++;
                     _statistics.MemoryHits++;
-                    _logger.LogInformation("Cache HIT (Memory): {Key}", key);
+                    _logger.LogDebug("Memory cache HIT: {Key}", key);
                     return cachedItem;
                 }
 
-                // L2: Check Redis (when enabled)
-                if (_config.UseRedis)
+                // L2: Check Redis
+                if (_config.UseRedis && _redisDatabase != null)
                 {
                     var redisItem = await GetFromRedisAsync<T>(key);
                     if (redisItem != null)
                     {
                         _statistics.TotalHits++;
                         _statistics.RedisHits++;
-                        _logger.LogInformation("Cache HIT (Redis): {Key}", key);
+                        _logger.LogDebug("Redis cache HIT: {Key}", key);
 
-                        // Store in L1 for faster access
+                        // Promote to L1 cache
                         await SetInMemoryAsync(key, redisItem, _config.InMemory.DefaultExpiration);
                         return redisItem;
                     }
                 }
 
                 _statistics.TotalMisses++;
-                _logger.LogInformation("Cache MISS: {Key}", key);
+                _logger.LogDebug("Cache MISS: {Key}", key);
                 return null;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting from cache: {Key}", key);
+                _logger.LogError(ex, "Cache GET error: {Key}", key);
                 return null;
             }
         }
 
         public async Task SetAsync<T>(string key, T value, TimeSpan? expiration = null) where T : class
         {
-            if (!_config.EnableCaching || value == null)
-                return;
+            if (!_config.EnableCaching || value == null) return;
 
             try
             {
@@ -87,17 +92,18 @@ namespace Basket.Filter.Services
                 // L1: Store in memory
                 await SetInMemoryAsync(key, value, exp);
 
-                // L2: Store in Redis (when enabled)
-                if (_config.UseRedis)
+                // L2: Store in Redis
+                if (_config.UseRedis && _redisDatabase != null)
                 {
-                    await SetInRedisAsync(key, value, exp);
+                    var redisExp = expiration ?? _config.Redis.DefaultExpiration;
+                    await SetInRedisAsync(key, value, redisExp);
                 }
 
-                _logger.LogInformation("Cache SET: {Key} (TTL: {Expiration})", key, exp);
+                _logger.LogDebug("Cache SET: {Key} (TTL: {Expiration})", key, exp);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error setting cache: {Key}", key);
+                _logger.LogError(ex, "Cache SET error: {Key}", key);
             }
         }
 
@@ -105,42 +111,35 @@ namespace Basket.Filter.Services
         {
             try
             {
-                // L1: Remove from memory
                 _memoryCache.Remove(key);
 
-                // L2: Remove from Redis (when enabled)
-                if (_config.UseRedis)
+                if (_config.UseRedis && _redisDatabase != null)
                 {
-                    await RemoveFromRedisAsync(key);
+                    await _redisDatabase.KeyDeleteAsync(key);
                 }
 
-                _logger.LogInformation("Cache REMOVE: {Key}", key);
+                _logger.LogDebug("Cache REMOVE: {Key}", key);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error removing from cache: {Key}", key);
+                _logger.LogError(ex, "Cache REMOVE error: {Key}", key);
             }
         }
 
-        public async Task ClearAsync()
+        public async Task<bool> ExistsAsync(string key)
         {
-            try
-            {
-                _logger.LogWarning("Cache clear requested");
+            var existsInMemory = _memoryCache.TryGetValue(key, out _);
+            if (existsInMemory) return true;
 
-                if (_config.UseRedis)
-                {
-                    await ClearRedisAsync();
-                }
-
-                _logger.LogInformation("Cache clear completed");
-            }
-            catch (Exception ex)
+            if (_config.UseRedis && _redisDatabase != null)
             {
-                _logger.LogError(ex, "Error clearing cache");
+                return await _redisDatabase.KeyExistsAsync(key);
             }
+
+            return false;
         }
 
+        // Catalog-specific methods (aligned with your existing interface)
         public async Task<CatalogItem?> GetCatalogItemAsync(string sku)
         {
             var key = $"catalog:item:{sku}";
@@ -160,22 +159,61 @@ namespace Basket.Filter.Services
             await RemoveAsync(key);
         }
 
-        public async Task<bool> ExistsAsync(string key)
+        public async Task<AIClassificationData?> GetAIClassificationAsync(string sku)
         {
-            var existsInMemory = _memoryCache.TryGetValue(key, out _);
-
-            if (!existsInMemory && _config.UseRedis)
-            {
-                var redisItem = await GetFromRedisAsync<object>(key);
-                return redisItem != null;
-            }
-
-            return existsInMemory;
+            var key = $"ai:classification:{sku}";
+            return await GetAsync<AIClassificationData>(key);
         }
 
-        public CacheStatistics GetStatistics()
+        public async Task SetAIClassificationAsync(string sku, AIClassificationData classification, TimeSpan? expiration = null)
         {
-            return _statistics;
+            var key = $"ai:classification:{sku}";
+            var exp = expiration ?? _config.InMemory.AIClassificationExpiration;
+            await SetAsync(key, classification, exp);
+        }
+
+        // Batch operations
+        public async Task<Dictionary<string, CatalogItem>> GetCatalogItemsBatchAsync(List<string> skus)
+        {
+            var results = new Dictionary<string, CatalogItem>();
+
+            foreach (var sku in skus)
+            {
+                var item = await GetCatalogItemAsync(sku);
+                if (item != null)
+                {
+                    results[sku] = item;
+                }
+            }
+
+            return results;
+        }
+
+        public CacheStatistics GetStatistics() => _statistics;
+
+        public async Task ClearAsync()
+        {
+            try
+            {
+                if (_config.UseRedis && _redisDatabase != null)
+                {
+                    var server = _redisDatabase.Multiplexer.GetServer(_redisDatabase.Multiplexer.GetEndPoints().First());
+                    await server.FlushDatabaseAsync();
+                }
+
+                // Reset statistics
+                _statistics.TotalHits = 0;
+                _statistics.TotalMisses = 0;
+                _statistics.MemoryHits = 0;
+                _statistics.RedisHits = 0;
+                _statistics.LastReset = DateTime.UtcNow;
+
+                _logger.LogWarning("Cache cleared");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Cache clear error");
+            }
         }
 
         // Private helper methods
@@ -197,81 +235,45 @@ namespace Basket.Filter.Services
             try
             {
                 var json = JsonSerializer.Serialize(value);
-                return json.Length * 2;
+                return json.Length * 2; // UTF-16 approximation
             }
             catch
             {
-                return 1000;
+                return 1000; // Default estimate
             }
         }
 
-		// Redis methods 
-		// Redis methods implementation
-		private async Task<T?> GetFromRedisAsync<T>(string key) where T : class
-		{
-			try
-			{
-                _logger.LogInformation("Getting Key from Redis");
-				if (_redisDatabase == null) return null;
-                _logger.LogInformation("Connecting to db...");
-                var value = await _redisDatabase.StringGetAsync(key);
-				if (!value.HasValue) return null;
-                _logger.LogInformation("Started deserializing");
+        private async Task<T?> GetFromRedisAsync<T>(string key) where T : class
+        {
+            try
+            {
+                if (_redisDatabase == null) return null;
 
-                var redisValue = JsonSerializer.Deserialize<T>(value!);
-                _logger.LogInformation("Deserialize Value: {Value}", redisValue);
-                return redisValue;
+                var value = await _redisDatabase.StringGetAsync(key);
+                if (!value.HasValue) return null;
+
+                return JsonSerializer.Deserialize<T>(value!);
             }
             catch (Exception ex)
-			{
-				_logger.LogError(ex, "Redis GET error for key: {Key}", key);
-				return null;
-			}
-		}
+            {
+                _logger.LogError(ex, "Redis GET error: {Key}", key);
+                return null;
+            }
+        }
 
-		private async Task SetInRedisAsync<T>(string key, T value, TimeSpan expiration) where T : class
-		{
-			try
-			{
-				if (_redisDatabase == null) return;
+        private async Task SetInRedisAsync<T>(string key, T value, TimeSpan expiration) where T : class
+        {
+            try
+            {
+                if (_redisDatabase == null) return;
 
-				var json = JsonSerializer.Serialize(value);
-				await _redisDatabase.StringSetAsync(key, json, expiration);
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "Redis SET error for key: {Key}", key);
-			}
-		}
-
-		private async Task RemoveFromRedisAsync(string key)
-		{
-			try
-			{
-				if (_redisDatabase == null) return;
-
-				await _redisDatabase.KeyDeleteAsync(key);
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "Redis REMOVE error for key: {Key}", key);
-			}
-		}
-
-		private async Task ClearRedisAsync()
-		{
-			try
-			{
-				if (_redisDatabase == null) return;
-
-				var server = _redisDatabase.Multiplexer.GetServer(_redisDatabase.Multiplexer.GetEndPoints().First());
-				await server.FlushDatabaseAsync();
-				_logger.LogWarning("Redis cache cleared");
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "Redis CLEAR error");
-			}
-		}
-	}
+                var json = JsonSerializer.Serialize(value);
+                await _redisDatabase.StringSetAsync(key, json, expiration);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Redis SET error: {Key}", key);
+            }
+        }
+    }
 }
