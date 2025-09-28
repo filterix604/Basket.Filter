@@ -23,12 +23,10 @@ namespace Basket.Filter.Services
 
             if (_config.EnableAI)
             {
-                var clientBuilder = new PredictionServiceClientBuilder
-                {
-                    CredentialsPath = _config.CredentialsPath
-                };
+                var clientBuilder = new PredictionServiceClientBuilder();
+
                 _predictionClient = clientBuilder.Build();
-                _logger.LogInformation("Vertex AI service initialized");
+                _logger.LogInformation("Vertex AI service initialized with default credentials");
             }
             else
             {
