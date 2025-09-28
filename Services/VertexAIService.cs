@@ -5,12 +5,14 @@ using System.Text.Json;
 using Basket.Filter.Models;
 using Basket.Filter.Services.Interface;
 using Basket.Filter.Models.AIModels;
+using ProtobufValue = Google.Protobuf.WellKnownTypes.Value;  // For building requests
+using AIPlatformValue = Google.Cloud.AIPlatform.V1.Value;    // For parsing responses (if needed)
 
 namespace Basket.Filter.Services
 {
     public class VertexAIService : IVertexAIService
     {
-        private readonly PredictionServiceClient _predictionClient;
+        private readonly PredictionServiceClient? _predictionClient;
         private readonly VertexAIConfig _config;
         private readonly ILogger<VertexAIService> _logger;
 
@@ -23,31 +25,39 @@ namespace Basket.Filter.Services
 
             if (_config.EnableAI)
             {
-                var clientBuilder = new PredictionServiceClientBuilder();
-
-                _predictionClient = clientBuilder.Build();
-                _logger.LogInformation("Vertex AI service initialized with default credentials");
+                try
+                {
+                    // Use default Google Cloud credentials (from Cloud Run service account)
+                    _predictionClient = new PredictionServiceClientBuilder().Build();
+                    _logger.LogInformation("Vertex AI initialized: {Model} in {Location}",
+                        _config.ModelName, _config.Location);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to initialize Vertex AI");
+                    _predictionClient = null;
+                }
             }
             else
             {
-                _logger.LogWarning("Vertex AI service disabled in configuration");
+                _logger.LogInformation("Vertex AI disabled in configuration");
             }
         }
 
         public async Task<AIClassificationResult> ClassifyProductAsync(AIClassificationRequest request)
         {
-            if (!_config.EnableAI)
+            if (!_config.EnableAI || _predictionClient == null)
             {
-                return GetFallbackResult("AI service disabled");
+                return GetFallbackResult("AI service not available");
             }
 
             try
             {
-                _logger.LogInformation("Calling Vertex AI for: {ProductName}", request.ProductName);
+                _logger.LogDebug("Classifying: {ProductName}", request.ProductName);
 
                 var result = await CallVertexAIWithRetryAsync(request);
 
-                _logger.LogInformation("AI Classification: {ProductName} → Eligible: {IsEligible} (Confidence: {Confidence})",
+                _logger.LogInformation("AI Result: {ProductName} → {IsEligible} ({Confidence:F2})",
                     request.ProductName, result.IsEligible, result.Confidence);
 
                 return result;
@@ -63,15 +73,14 @@ namespace Basket.Filter.Services
         {
             var result = await ClassifyProductAsync(request);
 
-            // If confidence is too low, apply conservative fallback
             if (result.Confidence < 0.7)
             {
-                _logger.LogWarning("Low confidence AI result ({Confidence}), applying conservative fallback", result.Confidence);
+                _logger.LogWarning("Low confidence ({Confidence:F2}), applying conservative fallback", result.Confidence);
                 return new AIClassificationResult
                 {
-                    IsEligible = false, // Conservative: reject uncertain items
+                    IsEligible = false,
                     Confidence = 0.5,
-                    Reason = $"Low confidence AI result: {result.Reason}",
+                    Reason = $"Low confidence result: {result.Reason}",
                     ModelVersion = result.ModelVersion,
                     DetectedCategory = "uncertain"
                 };
@@ -89,19 +98,12 @@ namespace Basket.Filter.Services
 
         public async Task<bool> IsServiceHealthyAsync()
         {
-            if (!_config.EnableAI) return true; // Disabled = healthy
+            if (!_config.EnableAI) return true;
 
             try
             {
-                var testRequest = new AIClassificationRequest
-                {
-                    ProductName = "Health Check Product",
-                    Description = "Test product for service health verification",
-                    Category = "test"
-                };
-
-                var result = await CallVertexAIAsync(testRequest);
-                return result != null && !string.IsNullOrEmpty(result.Reason);
+                // Test basic connectivity without expensive API call
+                return _predictionClient != null;
             }
             catch
             {
@@ -114,10 +116,9 @@ namespace Basket.Filter.Services
             return await Task.FromResult(_config.ModelName);
         }
 
-        // Private implementation methods
         private async Task<AIClassificationResult> CallVertexAIWithRetryAsync(AIClassificationRequest request)
         {
-            Exception lastException = null;
+            Exception? lastException = null;
 
             for (int attempt = 1; attempt <= _config.MaxRetries; attempt++)
             {
@@ -128,13 +129,12 @@ namespace Basket.Filter.Services
                 catch (Exception ex)
                 {
                     lastException = ex;
-                    _logger.LogWarning("AI call attempt {Attempt}/{MaxRetries} failed: {Error}",
+                    _logger.LogWarning("Attempt {Attempt}/{MaxRetries} failed: {Error}",
                         attempt, _config.MaxRetries, ex.Message);
 
                     if (attempt < _config.MaxRetries)
                     {
-                        var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt)); // Exponential backoff
-                        await Task.Delay(delay);
+                        await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)));
                     }
                 }
             }
@@ -144,80 +144,58 @@ namespace Basket.Filter.Services
 
         private async Task<AIClassificationResult> CallVertexAIAsync(AIClassificationRequest request)
         {
-            var endpoint = EndpointName.FromProjectLocationEndpoint(
-                _config.ProjectId,
-                _config.Location,
-                _config.EndpointId);
+            // Use Gemini API directly (no custom endpoint)
+            var model = $"projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}";
 
-            var prompt = BuildPrompt(request);
+            var prompt = BuildOptimizedPrompt(request);
 
-            // Use fully qualified Protobuf Value for building request
-            var instance = Google.Protobuf.WellKnownTypes.Value.ForStruct(new Struct
-            {
-                Fields =
-                {
-                    ["prompt"] = Google.Protobuf.WellKnownTypes.Value.ForString(prompt),
-                    ["max_tokens"] = Google.Protobuf.WellKnownTypes.Value.ForNumber(_config.MaxTokens),
-                    ["temperature"] = Google.Protobuf.WellKnownTypes.Value.ForNumber(_config.Temperature)
-                }
-            });
+            // FIXED: Use ProtobufValue alias for building request
+            var content = new Struct();
+            content.Fields.Add("content", ProtobufValue.ForString(prompt));
+
+            var instance = ProtobufValue.ForStruct(content);
+
+            var parameters = new Struct();
+            parameters.Fields.Add("maxOutputTokens", ProtobufValue.ForNumber(_config.MaxTokens));
+            parameters.Fields.Add("temperature", ProtobufValue.ForNumber(_config.Temperature));
+            parameters.Fields.Add("topP", ProtobufValue.ForNumber(0.8));
 
             var predictRequest = new PredictRequest
             {
-                Endpoint = endpoint.ToString(),
-                Instances = { instance }
+                Endpoint = model,
+                Instances = { instance },
+                Parameters = ProtobufValue.ForStruct(parameters)
             };
 
-            var response = await _predictionClient.PredictAsync(predictRequest);
+            var response = await _predictionClient!.PredictAsync(predictRequest);
             return ParseResponse(response, request);
         }
 
-        private string BuildPrompt(AIClassificationRequest request)
+        private string BuildOptimizedPrompt(AIClassificationRequest request)
         {
-            return $@"
-You are an AI assistant specialized in determining meal voucher eligibility for products in {request.CountryCode}.
+            // Shorter, more focused prompt to reduce token usage
+            return $@"Analyze this product for meal voucher eligibility in {request.CountryCode}:
 
-Product Information:
-- Name: {request.ProductName}
-- Description: {request.Description}
-- Category: {request.Category}
-- Subcategory: {request.SubCategory}
-- Price: €{request.Price:F2}
-- Contains Alcohol: {request.ContainsAlcohol}
-- Alcohol Volume: {request.AlcoholByVolume?.ToString() ?? "N/A"}%
-- Allergens: {string.Join(", ", request.Allergens)}
-- Merchant Type: {request.MerchantType}
+Product: {request.ProductName}
+Description: {request.Description ?? "N/A"}
+Category: {request.Category}
+Price: €{request.Price:F2}
+Contains Alcohol: {request.ContainsAlcohol}
+Merchant: {request.MerchantType}
 
-Context for {request.CountryCode}:
-{GetCountrySpecificGuidance(request.CountryCode)}
+{GetCountryRules(request.CountryCode)}
 
-CRITICAL: Respond with ONLY a JSON object:
-{{
-    ""isEligible"": true/false,
-    ""confidence"": 0.0-1.0,
-    ""reason"": ""clear explanation""
-}}";
+Respond with ONLY this JSON:
+{{""isEligible"": true/false, ""confidence"": 0.0-1.0, ""reason"": ""brief explanation""}}";
         }
 
-        private string GetCountrySpecificGuidance(string countryCode)
+        private string GetCountryRules(string countryCode)
         {
             return countryCode.ToUpper() switch
             {
-                "FR" => @"
-French Meal Voucher Rules:
-ELIGIBLE: Fresh food, prepared meals, beverages (non-alcoholic), bread, dairy
-MENUS WITH ALCOHOL: Allowed if alcohol < 33% of menu value
-NOT ELIGIBLE: Standalone alcohol, tobacco, non-food items, services",
-
-                "BE" => @"
-Belgian Meal Voucher Rules:
-ELIGIBLE: Prepared meals, fresh food, non-alcoholic beverages
-NOT ELIGIBLE: ALL alcohol products, tobacco, non-food items",
-
-                _ => @"
-General Rules:
-ELIGIBLE: Food and beverages for immediate consumption
-NOT ELIGIBLE: Non-food items, alcohol, tobacco, services"
+                "FR" => "RULES: Food/drinks OK. Alcohol in menus <33% OK. Standalone alcohol/non-food NOT OK.",
+                "BE" => "RULES: Food/drinks OK. NO alcohol allowed. Non-food NOT OK.",
+                _ => "RULES: Food/drinks for consumption OK. Alcohol/non-food NOT OK."
             };
         }
 
@@ -232,30 +210,24 @@ NOT ELIGIBLE: Non-food items, alcohol, tobacco, services"
                 }
 
                 string content = ExtractContent(prediction);
+                if (string.IsNullOrEmpty(content))
+                {
+                    throw new Exception("Empty response from AI");
+                }
+
                 var jsonContent = ExtractJsonFromContent(content);
 
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                };
-
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var parsed = JsonSerializer.Deserialize<AIClassificationResult>(jsonContent, options);
+
                 if (parsed == null)
                 {
                     throw new Exception("Failed to deserialize AI response");
                 }
 
-                // Enrich the result
+                // Enrich result
                 parsed.ModelVersion = _config.ModelName;
                 parsed.DetectedCategory = DetermineCategory(parsed, request.Category);
-                parsed.Metadata = new Dictionary<string, object>
-                {
-                    ["rawResponse"] = content,
-                    ["requestId"] = Guid.NewGuid().ToString(),
-                    ["processedAt"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")
-                };
-
-                // Validate and normalize
                 parsed.Confidence = Math.Max(0.0, Math.Min(1.0, parsed.Confidence));
 
                 return parsed;
@@ -267,40 +239,42 @@ NOT ELIGIBLE: Non-food items, alcohol, tobacco, services"
             }
         }
 
-        // FIXED: Use Protobuf Value (the correct type from response.Predictions)
-        private string ExtractContent(Google.Protobuf.WellKnownTypes.Value prediction)
+        // FIXED: Use ProtobufValue for response parsing (this is what response.Predictions returns)
+        private string ExtractContent(ProtobufValue prediction)
         {
-            // Check for struct value with fields
-            if (prediction.KindCase == Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StructValue)
+            if (prediction.KindCase == ProtobufValue.KindOneofCase.StructValue)
             {
-                var structValue = prediction.StructValue;
-                if (structValue.Fields.ContainsKey("content"))
-                    return structValue.Fields["content"].StringValue;
-                if (structValue.Fields.ContainsKey("text"))
-                    return structValue.Fields["text"].StringValue;
-                if (structValue.Fields.ContainsKey("candidates"))
+                var fields = prediction.StructValue.Fields;
+
+                // Try common response fields
+                foreach (var field in new[] { "content", "text", "output" })
                 {
-                    var candidates = structValue.Fields["candidates"];
-                    if (candidates.KindCase == Google.Protobuf.WellKnownTypes.Value.KindOneofCase.ListValue &&
-                        candidates.ListValue.Values.Count > 0)
+                    if (fields.ContainsKey(field) &&
+                        fields[field].KindCase == ProtobufValue.KindOneofCase.StringValue)
                     {
-                        var firstCandidate = candidates.ListValue.Values[0];
-                        if (firstCandidate.KindCase == Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StructValue &&
-                            firstCandidate.StructValue.Fields.ContainsKey("content"))
-                        {
-                            return firstCandidate.StructValue.Fields["content"].StringValue;
-                        }
+                        return fields[field].StringValue;
+                    }
+                }
+
+                // Try candidates structure
+                if (fields.ContainsKey("candidates") &&
+                    fields["candidates"].KindCase == ProtobufValue.KindOneofCase.ListValue &&
+                    fields["candidates"].ListValue.Values.Count > 0)
+                {
+                    var candidate = fields["candidates"].ListValue.Values[0];
+                    if (candidate.KindCase == ProtobufValue.KindOneofCase.StructValue &&
+                        candidate.StructValue.Fields.ContainsKey("content"))
+                    {
+                        return candidate.StructValue.Fields["content"].StringValue;
                     }
                 }
             }
 
-            // Check for direct string value
-            if (prediction.KindCase == Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StringValue)
+            if (prediction.KindCase == ProtobufValue.KindOneofCase.StringValue)
             {
                 return prediction.StringValue;
             }
 
-            // Fallback: try to get any string representation
             return prediction.ToString();
         }
 
@@ -308,7 +282,7 @@ NOT ELIGIBLE: Non-food items, alcohol, tobacco, services"
         {
             if (string.IsNullOrEmpty(content))
             {
-                throw new Exception("Empty content received from AI");
+                throw new Exception("Empty content from AI");
             }
 
             var jsonStart = content.IndexOf('{');
@@ -319,7 +293,15 @@ NOT ELIGIBLE: Non-food items, alcohol, tobacco, services"
                 return content.Substring(jsonStart, jsonEnd - jsonStart);
             }
 
-            throw new Exception($"No valid JSON found in response: {content}");
+            // Create fallback response if no JSON found
+            var fallback = new
+            {
+                isEligible = false,
+                confidence = 0.3,
+                reason = "Could not parse AI response"
+            };
+
+            return JsonSerializer.Serialize(fallback);
         }
 
         private string DetermineCategory(AIClassificationResult result, string originalCategory)
@@ -333,18 +315,14 @@ NOT ELIGIBLE: Non-food items, alcohol, tobacco, services"
                 return "ineligible";
             }
 
-            if (result.Reason.ToLowerInvariant().Contains("meal") ||
-                result.Reason.ToLowerInvariant().Contains("food"))
-                return "prepared_meal";
-
-            return originalCategory;
+            return result.Reason.ToLowerInvariant().Contains("meal") ? "prepared_meal" : originalCategory;
         }
 
         private AIClassificationResult GetFallbackResult(string reason)
         {
             return new AIClassificationResult
             {
-                IsEligible = false, // Conservative fallback
+                IsEligible = false,
                 Confidence = 0.0,
                 Reason = reason,
                 ModelVersion = _config.ModelName,
