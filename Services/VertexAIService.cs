@@ -1,94 +1,115 @@
-﻿using System.Net.Http;
+﻿using Basket.Filter.Models.AIModels;
+using Basket.Filter.Models;
+using Basket.Filter.Services.Interface;
+using Google.Apis.Auth.OAuth2;
+using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
-using Basket.Filter.Models.AIModels;
-using Basket.Filter.Services.Interface;
-using Google.Apis.Auth.OAuth2;
-using Basket.Filter.Models;
 
-namespace Basket.Filter.Services
+public class VertexAIService : IVertexAIService
 {
-    public class VertexAIService : IVertexAIService
+    private readonly HttpClient _httpClient;
+    private readonly VertexAIConfig _config;
+    private readonly ILogger<VertexAIService> _logger;
+    private readonly GoogleCredential _credential; // Cache credential
+
+    public VertexAIService(
+        IOptions<VertexAIConfig> config,
+        ILogger<VertexAIService> logger,
+        IHttpClientFactory httpClientFactory)
     {
-        private readonly HttpClient _httpClient;
-        private readonly VertexAIConfig _config;
-        private readonly ILogger<VertexAIService> _logger;
+        _config = config.Value;
+        _logger = logger;
+        _httpClient = httpClientFactory.CreateClient();
 
-        public VertexAIService(
-            IOptions<VertexAIConfig> config,
-            ILogger<VertexAIService> logger,
-            IHttpClientFactory httpClientFactory)
+        // Initialize credential once
+        _credential = InitializeCredential();
+    }
+
+    private GoogleCredential InitializeCredential()
+    {
+        try
         {
-            _config = config.Value;
-            _logger = logger;
-            _httpClient = httpClientFactory.CreateClient();
-        }
+            var vertexCredPath = Environment.GetEnvironmentVariable("VERTEX_AI_CREDENTIALS_PATH")
+                               ?? Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS")
+                               ?? "/app/vertexai-key.json";
 
-        public async Task<AIClassificationResult> ClassifyProductAsync(AIClassificationRequest request)
-        {
-            if (!_config.EnableAI)
-                return GetFallbackResult("AI disabled in config");
-
-            try
+            if (File.Exists(vertexCredPath))
             {
-                var prompt = BuildPrompt(request);
-
-                var requestBody = new
-                {
-                    contents = new[]
-                    {
-                        new { role = "user", parts = new[] { new { text = prompt } } }
-                    },
-                    generationConfig = new
-                    {
-                        temperature = _config.Temperature,
-                        maxOutputTokens = _config.MaxTokens,
-                        topP = 0.8
-                    }
-                };
-
-                string url = $"https://{_config.Location}-aiplatform.googleapis.com/v1/projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}:generateContent";
-
-                var json = JsonSerializer.Serialize(requestBody);
-                var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
-                {
-                    Content = new StringContent(json, Encoding.UTF8, "application/json")
-                };
-
-                // Use separate Vertex AI credentials
-                var vertexCredPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS_VERTEX");
-                if (string.IsNullOrEmpty(vertexCredPath))
-                    throw new Exception("Vertex AI credentials not set in environment");
-
-                var vertexCredential = GoogleCredential.FromFile(vertexCredPath)
+                _logger.LogInformation("Using Vertex AI credentials from: {Path}", vertexCredPath);
+                return GoogleCredential.FromFile(vertexCredPath)
                     .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
-
-                var accessToken = await vertexCredential.UnderlyingCredential
-                    .GetAccessTokenForRequestAsync();
-
-                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-                var response = await _httpClient.SendAsync(httpRequest);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogError("Vertex AI request failed: {Status} {Body}", response.StatusCode, responseContent);
-                    return GetFallbackResult($"AI error: {responseContent}");
-                }
-
-                return ParseResponse(responseContent, request);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogError(ex, "Error calling Vertex AI");
-                return GetFallbackResult(ex.Message);
+                _logger.LogInformation("Using default application credentials for Vertex AI");
+                return GoogleCredential.GetApplicationDefault()
+                    .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
             }
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initialize Vertex AI credentials");
+            throw;
+        }
+    }
 
-        public async Task<List<AIClassificationResult>> ClassifyBatchAsync(List<AIClassificationRequest> requests)
+    public async Task<AIClassificationResult> ClassifyProductAsync(AIClassificationRequest request)
+    {
+        if (!_config.EnableAI)
+            return GetFallbackResult("AI disabled in config");
+
+        try
+        {
+            var prompt = BuildPrompt(request);
+            var startTime = DateTime.UtcNow;
+
+            var requestBody = new
+            {
+                contents = new[]
+                {
+                    new { role = "user", parts = new[] { new { text = prompt } } }
+                },
+                generationConfig = new
+                {
+                    temperature = _config.Temperature,
+                    maxOutputTokens = _config.MaxTokens,
+                    topP = 0.8
+                }
+            };
+
+            string url = $"https://{_config.Location}-aiplatform.googleapis.com/v1/projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}:generateContent";
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            // Get access token from cached credential
+            var accessToken = await _credential.UnderlyingCredential.GetAccessTokenForRequestAsync();
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            var response = await _httpClient.SendAsync(httpRequest);
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var processingTime = DateTime.UtcNow - startTime;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Vertex AI request failed: {Status} {Body}", response.StatusCode, responseContent);
+                return GetFallbackResult($"AI error: {responseContent} [Source: vertex_ai, Confidence: 0.50, Time: {processingTime.TotalMilliseconds}ms]");
+            }
+
+            return ParseResponse(responseContent, request);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Vertex AI");
+            return GetFallbackResult($"AI error: {ex.Message}");
+        }
+    }
+    public async Task<List<AIClassificationResult>> ClassifyBatchAsync(List<AIClassificationRequest> requests)
         {
             var tasks = requests.Select(ClassifyProductAsync);
             var results = await Task.WhenAll(tasks);
@@ -192,4 +213,4 @@ Respond with ONLY this JSON:
             DetectedCategory = "fallback"
         };
     }
-}
+

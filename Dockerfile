@@ -25,16 +25,18 @@ WORKDIR /app
 # Copy published app
 COPY --from=publish /app/publish .
 
-# Copy Firestore service account JSON
+# Copy both service account keys
 COPY firestore-key.json /app/firestore-key.json
-# Copy Vertex AI key
-COPY vertexai-key.json /app/vertexai-key.json
+COPY vertex-ai-key.json /app/vertexai-key.json
 
 # Cloud Run environment variables
 ENV ASPNETCORE_URLS=http://*:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV GOOGLE_APPLICATION_CREDENTIALS=/app/firestore-key.json
-ENV GOOGLE_APPLICATION_CREDENTIALS_VERTEX=/app/vertexai-key.json
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/vertex-ai-key.json
+ENV FIRESTORE_CREDENTIALS_PATH=/app/firestore-key.json
+ENV VERTEX_AI_CREDENTIALS_PATH=/app/vertexai-key.json
+ENV GOOGLE_CLOUD_PROJECT=basket-filter-engine
+ENV PORT=8080
 
 # Entry point
 ENTRYPOINT ["dotnet", "Basket.Filter.dll"]
