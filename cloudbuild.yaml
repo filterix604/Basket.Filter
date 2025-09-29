@@ -16,7 +16,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest']
     
-  # Deploy to Cloud Run
+  # Deploy to Cloud Run with AI support
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
@@ -25,14 +25,14 @@ steps:
       '--region', 'asia-south1',
       '--platform', 'managed',
       '--allow-unauthenticated',
-      '--memory', '1Gi',                                         
-      '--cpu', '1',                                             
+      '--memory', '1Gi',                                         # INCREASED for AI processing
+      '--cpu', '1',                                              # INCREASED for AI processing  
       '--max-instances', '10',
       '--min-instances', '0',
       '--timeout', '900',
       '--vpc-connector', 'basket-filter-connector',
       '--vpc-egress', 'private-ranges-only',
-      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production'
+      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=us-central1,VertexAI__ModelName=gemini-1.5-flash-001,VertexAI__EnableAI=true'  # AI CONFIG
     ]
 
 images:

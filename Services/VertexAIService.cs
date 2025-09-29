@@ -144,28 +144,14 @@ namespace Basket.Filter.Services
 
         private async Task<AIClassificationResult> CallVertexAIAsync(AIClassificationRequest request)
         {
-            // Use the full model name from config
+            // Use Gemini API directly (no custom endpoint)
             var model = $"projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}";
-
-            _logger.LogDebug("Using model path: {ModelPath}", model);
 
             var prompt = BuildOptimizedPrompt(request);
 
-            // Create content for Gemini
+            // FIXED: Use ProtobufValue alias for building request
             var content = new Struct();
-            content.Fields.Add("contents", ProtobufValue.ForList(
-                ProtobufValue.ForStruct(new Struct
-                {
-                    Fields = {
-                ["parts"] = ProtobufValue.ForList(
-                    ProtobufValue.ForStruct(new Struct
-                    {
-                        Fields = { ["text"] = ProtobufValue.ForString(prompt) }
-                    })
-                )
-                    }
-                })
-            ));
+            content.Fields.Add("content", ProtobufValue.ForString(prompt));
 
             var instance = ProtobufValue.ForStruct(content);
 
@@ -181,10 +167,7 @@ namespace Basket.Filter.Services
                 Parameters = ProtobufValue.ForStruct(parameters)
             };
 
-            _logger.LogDebug("Sending request to Vertex AI...");
             var response = await _predictionClient!.PredictAsync(predictRequest);
-            _logger.LogDebug("Received response from Vertex AI");
-
             return ParseResponse(response, request);
         }
 
