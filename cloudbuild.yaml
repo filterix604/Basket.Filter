@@ -1,8 +1,8 @@
 # cloudbuild.yaml 
 substitutions:
   _REGION: 'asia-south1'
-  _AI_REGION: 'us-central1'  # FIX: Change back to us-central1 for Gemini
-  _SERVICE_ACCOUNT: 'vertex-ai-sa@${PROJECT_ID}.iam.gserviceaccount.com'
+  _AI_REGION: 'us-central1'  # Keep as us-central1 for Gemini
+  _SERVICE_ACCOUNT: 'vertex-ai-sa@basket-filter-engine.iam.gserviceaccount.com'  # FIX: Use actual project ID
   _SERVICE_NAME: 'basket-filter-api'
 
 steps:
@@ -31,12 +31,12 @@ steps:
       '--region', '${_REGION}',
       '--platform', 'managed',
       '--allow-unauthenticated',
-      '--memory', '2Gi',                                         # INCREASED for AI processing
-      '--cpu', '2',                                              # INCREASED for better performance
+      '--memory', '2Gi',
+      '--cpu', '2',
       '--max-instances', '10',
       '--min-instances', '0',
-      '--timeout', '900',                                        # 15 minutes for AI processing
-      '--service-account', '${_SERVICE_ACCOUNT}',               # ADDED: Service account for AI access
+      '--timeout', '900',
+      '--service-account', '${_SERVICE_ACCOUNT}',  # This should now work
       '--vpc-connector', 'basket-filter-connector',
       '--vpc-egress', 'private-ranges-only',
       '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=${_AI_REGION},VertexAI__ModelName=gemini-1.5-flash-001,VertexAI__EnableAI=true,VertexAI__Temperature=0.3,VertexAI__MaxTokens=1024'
@@ -48,4 +48,4 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'E2_HIGHCPU_8'  # ADDED: Better build performance
+  machineType: 'E2_HIGHCPU_8'
