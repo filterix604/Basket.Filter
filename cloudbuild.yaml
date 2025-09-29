@@ -1,7 +1,6 @@
 # cloudbuild.yaml 
 substitutions:
   _REGION: 'asia-south1'
-  _AI_REGION: 'us-central1'
   _SERVICE_ACCOUNT: 'vertex-ai-sa@basket-filter-engine.iam.gserviceaccount.com'
   _SERVICE_NAME: 'basket-filter-api'
 
@@ -22,7 +21,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest']
     
-  # Deploy to Cloud Run
+  # Deploy to Cloud Run 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
