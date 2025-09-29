@@ -32,7 +32,7 @@ steps:
       '--timeout', '900',
       '--vpc-connector', 'basket-filter-connector',
       '--vpc-egress', 'private-ranges-only',
-      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=us-central1,VertexAI__ModelName=gemini-2.0-flash-lite,VertexAI__EnableAI=true'  # AI CONFIG
+      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=us-central1,VertexAI__ModelName=text-bison@001,VertexAI__EnableAI=true'  # AI CONFIG
     ]
 
 images:
