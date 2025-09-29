@@ -54,9 +54,11 @@ namespace Basket.Filter.Services
                     Content = new StringContent(json, Encoding.UTF8, "application/json")
                 };
 
-                // Use proper OAuth scope for Vertex AI
+                // Proper OAuth 2 access token for Vertex AI
                 var credential = await GoogleCredential.GetApplicationDefaultAsync();
-                var accessToken = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync("https://www.googleapis.com/auth/cloud-platform");
+                var accessToken = await credential.UnderlyingCredential
+                    .GetAccessTokenForRequestAsync("https://www.googleapis.com/auth/cloud-platform");
+
                 httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
                 var response = await _httpClient.SendAsync(httpRequest);
