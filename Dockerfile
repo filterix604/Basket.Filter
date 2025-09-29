@@ -32,7 +32,7 @@ COPY vertexai-key.json /app/vertexai-key.json
 # Cloud Run environment variables
 ENV ASPNETCORE_URLS=http://*:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV GOOGLE_APPLICATION_CREDENTIALS=/app/vertex-ai-key.json
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/vertexai-key.json
 ENV FIRESTORE_CREDENTIALS_PATH=/app/firestore-key.json
 ENV VERTEX_AI_CREDENTIALS_PATH=/app/vertexai-key.json
 ENV GOOGLE_CLOUD_PROJECT=basket-filter-engine

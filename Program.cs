@@ -28,7 +28,7 @@ var projectId = Environment.GetEnvironmentVariable("GOOGLE_CLOUD_PROJECT") ?? "b
 
 // Separate credentials for Firestore and Vertex AI
 var firestoreCredentialsPath = Environment.GetEnvironmentVariable("FIRESTORE_CREDENTIALS_PATH") ?? "firestore-key.json";
-var vertexAICredentialsPath = Environment.GetEnvironmentVariable("VERTEX_AI_CREDENTIALS_PATH") ?? "vertex-ai-key.json";
+var vertexAICredentialsPath = Environment.GetEnvironmentVariable("VERTEX_AI_CREDENTIALS_PATH") ?? "vertexai-key.json";
 
 // Set up Firestore with its specific credentials
 GoogleCredential firestoreCredential;
@@ -181,7 +181,7 @@ builder.Services.AddScoped<IVertexAIService, VertexAIService>();
 
 // Health checks
 builder.Services.AddHealthChecks()
-    .AddCheck<VertexAIHealthCheck>("vertex-ai")
+    .AddCheck<VertexAIHealthCheck>("vertexai")
     .AddCheck("firestore", () => HealthCheckResult.Healthy($"Firestore: {projectId}"))
     .AddCheck("redis-cache", () =>
     {
