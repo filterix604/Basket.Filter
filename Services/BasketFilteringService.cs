@@ -71,24 +71,48 @@ namespace Basket.Filter.Services
                     CurrencyCode = c.CurrencyCode
                 }).ToList() ?? new List<Fee>();
 
-                var totalFeesAmount = fees.Sum(f => f.Amount);
-                var totalAmount = (decimal)request.BasketTotals.TotalAmount / 100;
-                var ineligibleAmount = totalAmount - eligibleAmount;
+				var totalFeesAmount = fees.Sum(f => f.Amount);
+				var totalAmount = (decimal)request.BasketTotals.TotalAmount / 100;
+				var ineligibleAmount = totalAmount - eligibleAmount;
 
-                var response = new BasketFilteringResponse
-                {
-                    BasketId = request.TransactionData.BasketId,
-                    TotalAmount = (double)totalAmount,
-                    EligibleAmount = (double)eligibleAmount,
-                    IneligibleAmount = (double)ineligibleAmount,
-                    CategorizedItems = categorizedItems,
-                    IneligibleFees = fees,
-                    IsFullyEligible = ineligibleAmount == (decimal)totalFeesAmount,
-                    ReasonIfNotEligible = ineligibleAmount > (decimal)totalFeesAmount ?
-                        "Contains non-food items or alcohol" : "Delivery fees excluded"
-                };
+				// Improved eligibility logic
+				var itemsAmount = totalAmount - (decimal)totalFeesAmount;
+				var isFullyEligible = ineligibleAmount == (decimal)totalFeesAmount;
 
-                var processingTime = DateTime.UtcNow - startTime;
+				string reasonIfNotEligible = null;
+				if (!isFullyEligible)
+				{
+					if (eligibleAmount == 0)
+					{
+						reasonIfNotEligible = "Basket contains no eligible items";
+					}
+					else if (ineligibleAmount == (decimal)totalFeesAmount)
+					{
+						reasonIfNotEligible = "Delivery fees excluded";
+					}
+					else if (ineligibleAmount > (decimal)totalFeesAmount)
+					{
+						reasonIfNotEligible = "Contains non-food items or alcohol";
+					}
+					else
+					{
+						reasonIfNotEligible = "Some items excluded from eligibility";
+					}
+				}
+
+				var response = new BasketFilteringResponse
+				{
+					BasketId = request.TransactionData.BasketId,
+					TotalAmount = (double)totalAmount,
+					EligibleAmount = (double)eligibleAmount,
+					IneligibleAmount = (double)ineligibleAmount,
+					CategorizedItems = categorizedItems,
+					IneligibleFees = fees,
+					IsFullyEligible = isFullyEligible,
+					ReasonIfNotEligible = reasonIfNotEligible
+				};
+
+				var processingTime = DateTime.UtcNow - startTime;
                 _logger.LogInformation("Basket processed: {BasketId} in {ProcessingTime}ms - Eligible: €{EligibleAmount}/€{TotalAmount}",
                     request.TransactionData.BasketId, processingTime.TotalMilliseconds, eligibleAmount, totalAmount);
 
