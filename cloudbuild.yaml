@@ -39,7 +39,7 @@ steps:
       '--service-account', '${_SERVICE_ACCOUNT}',  # This should now work
       '--vpc-connector', 'basket-filter-connector',
       '--vpc-egress', 'private-ranges-only',
-      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=${_AI_REGION},VertexAI__ModelName=gemini-1.5-pro,VertexAI__EnableAI=true,VertexAI__Temperature=0.3,VertexAI__MaxTokens=1024'
+      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=${_AI_REGION},VertexAI__ModelName=gemini-1.5-pro-001,VertexAI__EnableAI=true,VertexAI__Temperature=0.3,VertexAI__MaxTokens=1024'
     ]
 
 images:
