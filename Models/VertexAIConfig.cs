@@ -4,7 +4,7 @@
     {
         public string ProjectId { get; set; } = string.Empty;
         public string Location { get; set; } = "us-central1";
-        public string ModelName { get; set; } = "gemini-1.5-pro";
+        public string ModelName { get; set; } = "gemini-2.5-pro";
         public int MaxTokens { get; set; } = 1000;
         public double Temperature { get; set; } = 0.1;
         public bool EnableAI { get; set; } = true;
