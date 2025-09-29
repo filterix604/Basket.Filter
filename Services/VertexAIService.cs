@@ -54,9 +54,9 @@ namespace Basket.Filter.Services
                     Content = new StringContent(json, Encoding.UTF8, "application/json")
                 };
 
-                // ADC authentication
-                var token = await GoogleCredential.GetApplicationDefaultAsync();
-                var accessToken = await token.UnderlyingCredential.GetAccessTokenForRequestAsync();
+                // Use proper OAuth scope for Vertex AI
+                var credential = await GoogleCredential.GetApplicationDefaultAsync();
+                var accessToken = await credential.UnderlyingCredential.GetAccessTokenForRequestAsync("https://www.googleapis.com/auth/cloud-platform");
                 httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
                 var response = await _httpClient.SendAsync(httpRequest);
