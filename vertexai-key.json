@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "basket-filter-engine",
+  "private_key_id": "b13632011acb2e70dbe3ed87584546a9f6fa67c9",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCwZUjFkBpWRF3s\nGB7V/UPC6ASYUvsrsfe7QhLVz+IUFWz0Uly7uqFRZl2Deb9urd3wG33B03OCddzM\nfnUIdDHl8zatVdTeyZ5jXJ9WWxFbfOTq2BFfZrKmLcOSsyRvV5h5TR2ram6IEkTx\nK/3sGRBHE0/DHoy8C7CAdO7yPQUUFxr3RFnc/LRIQEBd0Zmxufxt+xInpBDbssu4\n3H12ziVkUy2mCtd8brm+oMVH08fOxZz+T7/CIevEHl/kytDr9bcMp3OCMt5OnNc2\nIeqNSNP0wj/8NjXlc5El91VW0jVrWqt44zSHc3kJu5sKbaa0H0tzOmwhd6XsmV8r\npyVax6EvAgMBAAECggEABrPnXRms/oX9IaluLO7bDwI9AA+RjsDMK15T4LI6orO7\nuHItJuigR6HbQATPNhfyPOgpuHgRLBRpdI9oYaiOQT28+diVZnY31NbvEQ6t03gL\nKzQhpapKQI+w0X3wKDDzNyzFSb9Mfh9fmK1CXVQ7rs+4WK9sMc5DgZlJf4S7d16a\ncWTSjRShe4g37qQqPQReqX2K2Vnm/6PtFghAXnUA5xIRO06VCAc4e8fVtGTn4nsT\nJPLE+tgASqdXwYEukd36qaWtZsIU9hWLsfqBAnqchcBW26lA2QCaRcmPbLkLM1PH\nrFwhCNRFjOh8BvlGYN3Ndbjfz4EZMFauCX6NNWQneQKBgQDV32b2eRnJEJ0TSiha\nim+OpQu4kkrZZY3n1okQJyaJlqqUZMXTh1mAN7YDmmZMxzsuFvN54bBThPgyEKV4\nJzcJG7U73Ztf2FX9QupGfDV05J/H20P7k0RpVpmQqff5WR8bjihJ2nF23MyVfWZ2\nAJuWJhVDhSHLX8ExyHcQPwHe5wKBgQDTJBdU0sG/2a3cTTVNTOoOm4c7L7n/JNaD\ne8z8jNqMsdA/eRvHZcFheXq1EkMRZQz+1yCInMXwAr2xenMy7vrYNZn1pHW4+obb\nJnu0iW4vB2k0RWhk6ke8vvyvDE3xUaF3dPvtYjs32VBBZ5lK+47RbLDMGArnXYol\nKov7/YXKeQKBgQDHeX8p4RdIreMi66apk7aqv4soEeIX051AH5tk4m8SIuFkWH0e\nZn32lX+A6tABSk0LFsLt6a6wpzNqVpZOc5zkNOCbPny9LyQ8e93P8edV6CqSmBJX\nISrMaMX/5FdxTEs0QymWgFQVfaiewQAAjV6P82Mfv5seeWfSi9to3qta/wKBgQC5\n4SwpIOIxZBILwG0MgIoOEh4bnQjB9kxjtLniHJ7K/j+3oYczJAH7Llc40br5tVyb\nfgjGPD6F7ePSO1rvnDR547aG6yI4l1Xh2R9O8S5veLbFrdUaAqblI76Q3ORBbvwX\njoW7lp9Lq6Vb7zilKpGxDV8YTpJK3a6gybQzRB5lAQKBgAQgcjb4kGdVi/4Gxasp\nwsQxK6++zKqp4VG/68gtPp4iClRxFihN23z9Rm2NdwrIfdvGZ1Fk4aVxyXLZIG9a\nHTU7dUQzqAb6/ZmpkIODvhN+A1zUlKCOKeMMe32kqAg38usU0qqnFgADQaUdV9J2\nGPJTqzSSLjlbxSjGiE8uKYNu\n-----END PRIVATE KEY-----\n",
+  "client_email": "vertex-ai-sa@basket-filter-engine.iam.gserviceaccount.com",
+  "client_id": "115222218330730290550",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/vertex-ai-sa%40basket-filter-engine.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

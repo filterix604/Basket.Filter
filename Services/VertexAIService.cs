@@ -16,7 +16,10 @@ namespace Basket.Filter.Services
         private readonly VertexAIConfig _config;
         private readonly ILogger<VertexAIService> _logger;
 
-        public VertexAIService(IOptions<VertexAIConfig> config, ILogger<VertexAIService> logger, IHttpClientFactory httpClientFactory)
+        public VertexAIService(
+            IOptions<VertexAIConfig> config,
+            ILogger<VertexAIService> logger,
+            IHttpClientFactory httpClientFactory)
         {
             _config = config.Value;
             _logger = logger;
@@ -54,10 +57,16 @@ namespace Basket.Filter.Services
                     Content = new StringContent(json, Encoding.UTF8, "application/json")
                 };
 
-                // Proper OAuth 2 access token for Vertex AI
-                var credential = await GoogleCredential.GetApplicationDefaultAsync();
-                var accessToken = await credential.UnderlyingCredential
-                    .GetAccessTokenForRequestAsync("https://www.googleapis.com/auth/cloud-platform");
+                // Use separate Vertex AI credentials
+                var vertexCredPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS_VERTEX");
+                if (string.IsNullOrEmpty(vertexCredPath))
+                    throw new Exception("Vertex AI credentials not set in environment");
+
+                var vertexCredential = GoogleCredential.FromFile(vertexCredPath)
+                    .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
+
+                var accessToken = await vertexCredential.UnderlyingCredential
+                    .GetAccessTokenForRequestAsync();
 
                 httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
@@ -105,14 +114,7 @@ namespace Basket.Filter.Services
 
         public async Task<bool> IsServiceHealthyAsync()
         {
-            try
-            {
-                return _config.EnableAI;
-            }
-            catch
-            {
-                return false;
-            }
+            return _config.EnableAI;
         }
 
         public async Task<string> GetModelVersionAsync()
