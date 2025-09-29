@@ -30,6 +30,9 @@ builder.Services.Configure<CacheConfig>(builder.Configuration.GetSection("Cache"
 
 // AI and Business Rules configuration
 builder.Services.Configure<VertexAIConfig>(builder.Configuration.GetSection("VertexAI"));
+builder.Services.AddHttpClient<VertexAIService>();
+builder.Services.Configure<VertexAIConfig>(builder.Configuration.GetSection("VertexAI"));
+builder.Services.AddScoped<IVertexAIService, VertexAIService>();
 // Memory cache (increased for production)
 builder.Services.AddMemoryCache(options =>
 {
