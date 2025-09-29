@@ -154,9 +154,9 @@ public class VertexAIService : IVertexAIService
             return await Task.FromResult(_config.ModelName);
         }
 
-        private string BuildPrompt(AIClassificationRequest request)
-        {
-            return $@"Analyze this product for meal voucher eligibility in {request.CountryCode}:
+    private string BuildPrompt(AIClassificationRequest request)
+    {
+        return $@"Analyze this product for meal voucher eligibility in {request.CountryCode}:
 
 Product: {request.ProductName}
 Description: {request.Description ?? "N/A"}
@@ -167,11 +167,15 @@ Merchant: {request.MerchantType}
 
 {GetCountryRules(request.CountryCode)}
 
-Respond with ONLY this JSON:
-{{""isEligible"": true/false, ""confidence"": 0.0-1.0, ""reason"": ""brief explanation""}}";
-        }
+IMPORTANT: Respond with ONLY valid JSON in this exact format (no extra text, no markdown):
+{{""isEligible"": true, ""confidence"": 0.95, ""reason"": ""eligible food item""}}
 
-        private string GetCountryRules(string countryCode)
+or
+
+{{""isEligible"": false, ""confidence"": 0.90, ""reason"": ""contains alcohol""}}";
+    }
+
+    private string GetCountryRules(string countryCode)
         {
             return countryCode.ToUpper() switch
             {
