@@ -9,6 +9,10 @@ using Basket.Filter.Health;
 using StackExchange.Redis;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Basket.Filter.Models.Rules;
+using Google.Cloud.AIPlatform.V1;
+using Google.Api.Gax.Grpc;
+using Google.Apis.Auth.OAuth2;
+using Google.Cloud.Firestore.V1;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,17 +23,110 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(int.Parse(port));
 });
 
-// CLOUD RUN: Enhanced Firestore setup
+// CLOUD RUN: Enhanced Google Cloud setup
 var projectId = Environment.GetEnvironmentVariable("GOOGLE_CLOUD_PROJECT") ?? "basket-filter-engine";
-var credentialsPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS") ?? "firestore-key.json";
-Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", credentialsPath);
-builder.Services.AddSingleton(FirestoreDb.Create(projectId));
+
+// Separate credentials for Firestore and Vertex AI
+var firestoreCredentialsPath = Environment.GetEnvironmentVariable("FIRESTORE_CREDENTIALS_PATH") ?? "firestore-key.json";
+var vertexAICredentialsPath = Environment.GetEnvironmentVariable("VERTEX_AI_CREDENTIALS_PATH") ?? "vertexai-key.json";
+
+// Set up Firestore with its specific credentials
+GoogleCredential firestoreCredential;
+try
+{
+    if (File.Exists(firestoreCredentialsPath))
+    {
+        firestoreCredential = GoogleCredential.FromFile(firestoreCredentialsPath);
+        Console.WriteLine($"Using Firestore credentials from file: {firestoreCredentialsPath}");
+    }
+    else
+    {
+        firestoreCredential = GoogleCredential.GetApplicationDefault();
+        Console.WriteLine("Using default Firestore credentials");
+    }
+}
+catch (Exception ex)
+{
+    throw new InvalidOperationException($"Failed to load Firestore credentials: {ex.Message}", ex);
+}
+
+// Set up Vertex AI with its specific credentials
+GoogleCredential vertexAICredential;
+try
+{
+    if (File.Exists(vertexAICredentialsPath))
+    {
+        vertexAICredential = GoogleCredential.FromFile(vertexAICredentialsPath);
+        // Set this as the default for other Google Cloud services
+        Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", vertexAICredentialsPath);
+        Console.WriteLine($"Using Vertex AI credentials from file: {vertexAICredentialsPath}");
+    }
+    else
+    {
+        vertexAICredential = GoogleCredential.GetApplicationDefault();
+        Console.WriteLine("Using default Vertex AI credentials");
+    }
+}
+catch (Exception ex)
+{
+    throw new InvalidOperationException($"Failed to load Vertex AI credentials: {ex.Message}", ex);
+}
+
+// Firestore setup with specific credentials
+builder.Services.AddSingleton<FirestoreDb>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<FirestoreDb>>();
+    try
+    {
+        // Create Firestore client builder with specific credentials
+        var firestoreClientBuilder = new FirestoreClientBuilder
+        {
+            Credential = firestoreCredential
+        };
+
+        var firestoreClient = firestoreClientBuilder.Build();
+        var db = FirestoreDb.Create(projectId, firestoreClient);
+
+        logger.LogInformation("Firestore initialized successfully with project: {ProjectId}", projectId);
+        return db;
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to initialize Firestore");
+        throw;
+    }
+});
+
+// Vertex AI Client setup with specific credentials
+builder.Services.AddSingleton<PredictionServiceClient>(provider =>
+{
+    var logger = provider.GetRequiredService<ILogger<PredictionServiceClient>>();
+    try
+    {
+        var clientBuilder = new PredictionServiceClientBuilder
+        {
+            Credential = vertexAICredential,
+            Endpoint = "us-central1-aiplatform.googleapis.com"
+        };
+
+        var client = clientBuilder.Build();
+        logger.LogInformation("Vertex AI client initialized successfully");
+        return client;
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to initialize Vertex AI client");
+        throw;
+    }
+});
 
 // Cache configuration
 builder.Services.Configure<CacheConfig>(builder.Configuration.GetSection("Cache"));
 
 // AI and Business Rules configuration
 builder.Services.Configure<VertexAIConfig>(builder.Configuration.GetSection("VertexAI"));
+builder.Services.AddHttpClient<VertexAIService>();
+
 // Memory cache (increased for production)
 builder.Services.AddMemoryCache(options =>
 {
@@ -62,7 +159,7 @@ else
     builder.Services.AddSingleton<IConnectionMultiplexer?>(provider => null);
 }
 
-// Services registration (cleaned up duplicates)
+// Services registration
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -84,7 +181,7 @@ builder.Services.AddScoped<IVertexAIService, VertexAIService>();
 
 // Health checks
 builder.Services.AddHealthChecks()
-    .AddCheck<VertexAIHealthCheck>("vertex-ai")
+    .AddCheck<VertexAIHealthCheck>("vertexai")
     .AddCheck("firestore", () => HealthCheckResult.Healthy($"Firestore: {projectId}"))
     .AddCheck("redis-cache", () =>
     {
@@ -93,6 +190,13 @@ builder.Services.AddHealthChecks()
             return HealthCheckResult.Healthy($"Redis: {cacheConfig.Redis.InstanceName}");
         }
         return HealthCheckResult.Healthy("Redis cache disabled");
+    })
+    .AddCheck("credentials", () =>
+    {
+        var results = new List<string>();
+        if (File.Exists(firestoreCredentialsPath)) results.Add("Firestore: OK");
+        if (File.Exists(vertexAICredentialsPath)) results.Add("VertexAI: OK");
+        return HealthCheckResult.Healthy($"Credentials: {string.Join(", ", results)}");
     });
 
 var app = builder.Build();
@@ -107,17 +211,31 @@ app.MapControllers();
 // Health check endpoint
 app.MapHealthChecks("/health");
 
-// Startup validation
+// Startup validation with proper logger access
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 var aiConfig = app.Configuration.GetSection("VertexAI").Get<VertexAIConfig>();
 
 logger.LogInformation("Starting Basket Filter API");
 logger.LogInformation("Project ID: {ProjectId}", projectId);
+logger.LogInformation("Firestore Credentials: {FirestorePath}", firestoreCredentialsPath);
+logger.LogInformation("Vertex AI Credentials: {VertexPath}", vertexAICredentialsPath);
 logger.LogInformation("Cache: Redis={RedisEnabled}", cacheConfig?.UseRedis ?? false);
 
 if (aiConfig?.EnableAI == true)
 {
     logger.LogInformation("AI Service: ENABLED (Model: {Model})", aiConfig.ModelName);
+
+    // Test both services at startup
+    try
+    {
+        var vertexClient = app.Services.GetRequiredService<PredictionServiceClient>();
+        var firestoreDb = app.Services.GetRequiredService<FirestoreDb>();
+        logger.LogInformation("Both Vertex AI and Firestore clients ready");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Service initialization failed");
+    }
 }
 else
 {

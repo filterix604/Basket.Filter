@@ -1,81 +1,126 @@
-﻿using Google.Cloud.AIPlatform.V1;
-using Google.Protobuf.WellKnownTypes;
-using Microsoft.Extensions.Options;
-using System.Text.Json;
+﻿using Basket.Filter.Models.AIModels;
 using Basket.Filter.Models;
 using Basket.Filter.Services.Interface;
-using Basket.Filter.Models.AIModels;
-using ProtobufValue = Google.Protobuf.WellKnownTypes.Value;  // For building requests
-using AIPlatformValue = Google.Cloud.AIPlatform.V1.Value;    // For parsing responses (if needed)
+using Google.Apis.Auth.OAuth2;
+using Microsoft.Extensions.Options;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 
-namespace Basket.Filter.Services
+public class VertexAIService : IVertexAIService
 {
-    public class VertexAIService : IVertexAIService
+    private readonly HttpClient _httpClient;
+    private readonly VertexAIConfig _config;
+    private readonly ILogger<VertexAIService> _logger;
+    private readonly GoogleCredential _credential; // Cache credential
+
+    public VertexAIService(
+        IOptions<VertexAIConfig> config,
+        ILogger<VertexAIService> logger,
+        IHttpClientFactory httpClientFactory)
     {
-        private readonly PredictionServiceClient? _predictionClient;
-        private readonly VertexAIConfig _config;
-        private readonly ILogger<VertexAIService> _logger;
+        _config = config.Value;
+        _logger = logger;
+        _httpClient = httpClientFactory.CreateClient();
 
-        public VertexAIService(
-            IOptions<VertexAIConfig> config,
-            ILogger<VertexAIService> logger)
+        // Initialize credential once
+        _credential = InitializeCredential();
+    }
+
+    private GoogleCredential InitializeCredential()
+    {
+        try
         {
-            _config = config.Value;
-            _logger = logger;
+            var vertexCredPath = Environment.GetEnvironmentVariable("VERTEX_AI_CREDENTIALS_PATH")
+                               ?? Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS")
+                               ?? "/app/vertexai-key.json";
 
-            if (_config.EnableAI)
+            if (File.Exists(vertexCredPath))
             {
-                try
-                {
-                    // Use default Google Cloud credentials (from Cloud Run service account)
-                    _predictionClient = new PredictionServiceClientBuilder().Build();
-                    _logger.LogInformation("Vertex AI initialized: {Model} in {Location}",
-                        _config.ModelName, _config.Location);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to initialize Vertex AI");
-                    _predictionClient = null;
-                }
+                _logger.LogInformation("Using Vertex AI credentials from: {Path}", vertexCredPath);
+                return GoogleCredential.FromFile(vertexCredPath)
+                    .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
             }
             else
             {
-                _logger.LogInformation("Vertex AI disabled in configuration");
+                _logger.LogInformation("Using default application credentials for Vertex AI");
+                return GoogleCredential.GetApplicationDefault()
+                    .CreateScoped("https://www.googleapis.com/auth/cloud-platform");
             }
         }
-
-        public async Task<AIClassificationResult> ClassifyProductAsync(AIClassificationRequest request)
+        catch (Exception ex)
         {
-            if (!_config.EnableAI || _predictionClient == null)
+            _logger.LogError(ex, "Failed to initialize Vertex AI credentials");
+            throw;
+        }
+    }
+
+    public async Task<AIClassificationResult> ClassifyProductAsync(AIClassificationRequest request)
+    {
+        if (!_config.EnableAI)
+            return GetFallbackResult("AI disabled in config");
+
+        try
+        {
+            var prompt = BuildPrompt(request);
+            var startTime = DateTime.UtcNow;
+
+            var requestBody = new
             {
-                return GetFallbackResult("AI service not available");
+                contents = new[]
+                {
+                    new { role = "user", parts = new[] { new { text = prompt } } }
+                },
+                generationConfig = new
+                {
+                    temperature = _config.Temperature,
+                    maxOutputTokens = _config.MaxTokens,
+                    topP = 0.8
+                }
+            };
+
+            string url = $"https://{_config.Location}-aiplatform.googleapis.com/v1/projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}:generateContent";
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            // Get access token from cached credential
+            var accessToken = await _credential.UnderlyingCredential.GetAccessTokenForRequestAsync();
+            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            var response = await _httpClient.SendAsync(httpRequest);
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var processingTime = DateTime.UtcNow - startTime;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Vertex AI request failed: {Status} {Body}", response.StatusCode, responseContent);
+                return GetFallbackResult($"AI error: {responseContent} [Source: vertex_ai, Confidence: 0.50, Time: {processingTime.TotalMilliseconds}ms]");
             }
 
-            try
-            {
-                _logger.LogDebug("Classifying: {ProductName}", request.ProductName);
-
-                var result = await CallVertexAIWithRetryAsync(request);
-
-                _logger.LogInformation("AI Result: {ProductName} → {IsEligible} ({Confidence:F2})",
-                    request.ProductName, result.IsEligible, result.Confidence);
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "AI Classification failed: {ProductName}", request.ProductName);
-                return GetFallbackResult($"AI error: {ex.Message}");
-            }
+            return ParseResponse(responseContent, request);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calling Vertex AI");
+            return GetFallbackResult($"AI error: {ex.Message}");
+        }
+    }
+    public async Task<List<AIClassificationResult>> ClassifyBatchAsync(List<AIClassificationRequest> requests)
+        {
+            var tasks = requests.Select(ClassifyProductAsync);
+            var results = await Task.WhenAll(tasks);
+            return results.ToList();
         }
 
         public async Task<AIClassificationResult> ClassifyWithFallbackAsync(AIClassificationRequest request)
         {
             var result = await ClassifyProductAsync(request);
-
             if (result.Confidence < 0.7)
             {
-                _logger.LogWarning("Low confidence ({Confidence:F2}), applying conservative fallback", result.Confidence);
                 return new AIClassificationResult
                 {
                     IsEligible = false,
@@ -85,30 +130,12 @@ namespace Basket.Filter.Services
                     DetectedCategory = "uncertain"
                 };
             }
-
             return result;
-        }
-
-        public async Task<List<AIClassificationResult>> ClassifyBatchAsync(List<AIClassificationRequest> requests)
-        {
-            var tasks = requests.Select(ClassifyProductAsync);
-            var results = await Task.WhenAll(tasks);
-            return results.ToList();
         }
 
         public async Task<bool> IsServiceHealthyAsync()
         {
-            if (!_config.EnableAI) return true;
-
-            try
-            {
-                // Test basic connectivity without expensive API call
-                return _predictionClient != null;
-            }
-            catch
-            {
-                return false;
-            }
+            return _config.EnableAI;
         }
 
         public async Task<string> GetModelVersionAsync()
@@ -116,64 +143,8 @@ namespace Basket.Filter.Services
             return await Task.FromResult(_config.ModelName);
         }
 
-        private async Task<AIClassificationResult> CallVertexAIWithRetryAsync(AIClassificationRequest request)
+        private string BuildPrompt(AIClassificationRequest request)
         {
-            Exception? lastException = null;
-
-            for (int attempt = 1; attempt <= _config.MaxRetries; attempt++)
-            {
-                try
-                {
-                    return await CallVertexAIAsync(request);
-                }
-                catch (Exception ex)
-                {
-                    lastException = ex;
-                    _logger.LogWarning("Attempt {Attempt}/{MaxRetries} failed: {Error}",
-                        attempt, _config.MaxRetries, ex.Message);
-
-                    if (attempt < _config.MaxRetries)
-                    {
-                        await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)));
-                    }
-                }
-            }
-
-            throw lastException ?? new Exception("AI service failed after retries");
-        }
-
-        private async Task<AIClassificationResult> CallVertexAIAsync(AIClassificationRequest request)
-        {
-            // Use Gemini API directly (no custom endpoint)
-            var model = $"projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}";
-
-            var prompt = BuildOptimizedPrompt(request);
-
-            // FIXED: Use ProtobufValue alias for building request
-            var content = new Struct();
-            content.Fields.Add("content", ProtobufValue.ForString(prompt));
-
-            var instance = ProtobufValue.ForStruct(content);
-
-            var parameters = new Struct();
-            parameters.Fields.Add("maxOutputTokens", ProtobufValue.ForNumber(_config.MaxTokens));
-            parameters.Fields.Add("temperature", ProtobufValue.ForNumber(_config.Temperature));
-            parameters.Fields.Add("topP", ProtobufValue.ForNumber(0.8));
-
-            var predictRequest = new PredictRequest
-            {
-                Endpoint = model,
-                Instances = { instance },
-                Parameters = ProtobufValue.ForStruct(parameters)
-            };
-
-            var response = await _predictionClient!.PredictAsync(predictRequest);
-            return ParseResponse(response, request);
-        }
-
-        private string BuildOptimizedPrompt(AIClassificationRequest request)
-        {
-            // Shorter, more focused prompt to reduce token usage
             return $@"Analyze this product for meal voucher eligibility in {request.CountryCode}:
 
 Product: {request.ProductName}
@@ -199,135 +170,47 @@ Respond with ONLY this JSON:
             };
         }
 
-        private AIClassificationResult ParseResponse(PredictResponse response, AIClassificationRequest request)
+        private AIClassificationResult ParseResponse(string jsonResponse, AIClassificationRequest request)
         {
+            using var doc = JsonDocument.Parse(jsonResponse);
+            var root = doc.RootElement;
+
+            var text = root
+                .GetProperty("candidates")[0]
+                .GetProperty("content")
+                .GetProperty("parts")[0]
+                .GetProperty("text")
+                .GetString();
+
+            if (string.IsNullOrEmpty(text))
+                return GetFallbackResult("Empty AI response");
+
             try
             {
-                var prediction = response.Predictions.FirstOrDefault();
-                if (prediction == null)
+                var parsed = JsonSerializer.Deserialize<AIClassificationResult>(text, new JsonSerializerOptions
                 {
-                    throw new Exception("No predictions in response");
-                }
+                    PropertyNameCaseInsensitive = true
+                });
 
-                string content = ExtractContent(prediction);
-                if (string.IsNullOrEmpty(content))
-                {
-                    throw new Exception("Empty response from AI");
-                }
+                if (parsed == null) return GetFallbackResult("Deserialization failed");
 
-                var jsonContent = ExtractJsonFromContent(content);
-
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var parsed = JsonSerializer.Deserialize<AIClassificationResult>(jsonContent, options);
-
-                if (parsed == null)
-                {
-                    throw new Exception("Failed to deserialize AI response");
-                }
-
-                // Enrich result
                 parsed.ModelVersion = _config.ModelName;
-                parsed.DetectedCategory = DetermineCategory(parsed, request.Category);
-                parsed.Confidence = Math.Max(0.0, Math.Min(1.0, parsed.Confidence));
-
+                parsed.DetectedCategory = request.Category;
                 return parsed;
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogError(ex, "Failed to parse AI response");
-                return GetFallbackResult($"Parse error: {ex.Message}");
+                return GetFallbackResult("Parse error");
             }
         }
 
-        // FIXED: Use ProtobufValue for response parsing (this is what response.Predictions returns)
-        private string ExtractContent(ProtobufValue prediction)
+        private AIClassificationResult GetFallbackResult(string reason) => new()
         {
-            if (prediction.KindCase == ProtobufValue.KindOneofCase.StructValue)
-            {
-                var fields = prediction.StructValue.Fields;
-
-                // Try common response fields
-                foreach (var field in new[] { "content", "text", "output" })
-                {
-                    if (fields.ContainsKey(field) &&
-                        fields[field].KindCase == ProtobufValue.KindOneofCase.StringValue)
-                    {
-                        return fields[field].StringValue;
-                    }
-                }
-
-                // Try candidates structure
-                if (fields.ContainsKey("candidates") &&
-                    fields["candidates"].KindCase == ProtobufValue.KindOneofCase.ListValue &&
-                    fields["candidates"].ListValue.Values.Count > 0)
-                {
-                    var candidate = fields["candidates"].ListValue.Values[0];
-                    if (candidate.KindCase == ProtobufValue.KindOneofCase.StructValue &&
-                        candidate.StructValue.Fields.ContainsKey("content"))
-                    {
-                        return candidate.StructValue.Fields["content"].StringValue;
-                    }
-                }
-            }
-
-            if (prediction.KindCase == ProtobufValue.KindOneofCase.StringValue)
-            {
-                return prediction.StringValue;
-            }
-
-            return prediction.ToString();
-        }
-
-        private string ExtractJsonFromContent(string content)
-        {
-            if (string.IsNullOrEmpty(content))
-            {
-                throw new Exception("Empty content from AI");
-            }
-
-            var jsonStart = content.IndexOf('{');
-            var jsonEnd = content.LastIndexOf('}') + 1;
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
-            {
-                return content.Substring(jsonStart, jsonEnd - jsonStart);
-            }
-
-            // Create fallback response if no JSON found
-            var fallback = new
-            {
-                isEligible = false,
-                confidence = 0.3,
-                reason = "Could not parse AI response"
-            };
-
-            return JsonSerializer.Serialize(fallback);
-        }
-
-        private string DetermineCategory(AIClassificationResult result, string originalCategory)
-        {
-            if (!result.IsEligible)
-            {
-                if (result.Reason.ToLowerInvariant().Contains("alcohol"))
-                    return "alcoholic";
-                if (result.Reason.ToLowerInvariant().Contains("non-food"))
-                    return "non_food";
-                return "ineligible";
-            }
-
-            return result.Reason.ToLowerInvariant().Contains("meal") ? "prepared_meal" : originalCategory;
-        }
-
-        private AIClassificationResult GetFallbackResult(string reason)
-        {
-            return new AIClassificationResult
-            {
-                IsEligible = false,
-                Confidence = 0.0,
-                Reason = reason,
-                ModelVersion = _config.ModelName,
-                DetectedCategory = "fallback"
-            };
-        }
+            IsEligible = false,
+            Confidence = 0,
+            Reason = reason,
+            ModelVersion = _config.ModelName,
+            DetectedCategory = "fallback"
+        };
     }
-}
+
