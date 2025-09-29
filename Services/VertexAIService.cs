@@ -62,6 +62,10 @@ public class VertexAIService : IVertexAIService
 
         try
         {
+            // ADD DETAILED LOGGING
+            _logger.LogInformation("AI Config - Model: {Model}, Location: {Location}, Project: {Project}",
+                _config.ModelName, _config.Location, _config.ProjectId);
+
             var prompt = BuildPrompt(request);
             var startTime = DateTime.UtcNow;
 
@@ -69,8 +73,8 @@ public class VertexAIService : IVertexAIService
             {
                 contents = new[]
                 {
-                    new { role = "user", parts = new[] { new { text = prompt } } }
-                },
+                new { role = "user", parts = new[] { new { text = prompt } } }
+            },
                 generationConfig = new
                 {
                     temperature = _config.Temperature,
@@ -80,6 +84,9 @@ public class VertexAIService : IVertexAIService
             };
 
             string url = $"https://{_config.Location}-aiplatform.googleapis.com/v1/projects/{_config.ProjectId}/locations/{_config.Location}/publishers/google/models/{_config.ModelName}:generateContent";
+
+            // LOG THE FULL URL
+            _logger.LogInformation("Vertex AI URL: {Url}", url);
 
             var json = JsonSerializer.Serialize(requestBody);
             var httpRequest = new HttpRequestMessage(HttpMethod.Post, url)
@@ -98,14 +105,18 @@ public class VertexAIService : IVertexAIService
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogError("Vertex AI request failed: {Status} {Body}", response.StatusCode, responseContent);
-                return GetFallbackResult($"AI error: {responseContent} [Source: vertex_ai, Confidence: 0.50, Time: {processingTime.TotalMilliseconds}ms]");
+                return GetFallbackResult($"AI error: {responseContent} [Source: vertex_ai_fresh, Confidence: 0.00, Time: {processingTime.TotalMilliseconds}ms]");
             }
 
-            return ParseResponse(responseContent, request);
+            var result = ParseResponse(responseContent, request);
+            _logger.LogInformation("AI Success: {ProductName} → {IsEligible} (Confidence: {Confidence})",
+                request.ProductName, result.IsEligible, result.Confidence);
+
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error calling Vertex AI");
+            _logger.LogError(ex, "Error calling Vertex AI for: {ProductName}", request.ProductName);
             return GetFallbackResult($"AI error: {ex.Message}");
         }
     }
