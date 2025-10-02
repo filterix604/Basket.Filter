@@ -49,7 +49,6 @@ namespace Basket.Filter.Services
 
         public async Task<BusinessRulesConfig> GetBusinessRulesAsync()
         {
-            // Cache business rules for 1 hour
             if (_cachedRules != null && DateTime.UtcNow - _lastLoadTime < TimeSpan.FromHours(1))
             {
                 return _cachedRules;
@@ -89,7 +88,6 @@ namespace Basket.Filter.Services
             var merchantRules = GetMerchantTypeRules(rules, merchantType);
             var countryRules = GetCountrySpecificRules(rules, countryCode);
 
-            // Merchant type must support it AND country must allow it
             return merchantRules.DefaultAllowAlcoholInCombos && countryRules.AllowAlcoholInMenus;
         }
 
@@ -116,7 +114,7 @@ namespace Basket.Filter.Services
             if (merchantRules.OperatesWeekends)
             {
                 baseDays.Add(DayOfWeek.Saturday);
-                if (merchantType.ToLower() == "grocery") // Grocery stores often open Sundays
+                if (merchantType.ToLower() == "grocery")
                 {
                     baseDays.Add(DayOfWeek.Sunday);
                 }
@@ -131,7 +129,6 @@ namespace Basket.Filter.Services
             var countryRules = GetCountrySpecificRules(rules, countryCode);
             var result = new List<CategoryRule>(baseRules);
 
-            // Apply country-specific prohibitions
             foreach (var rule in result)
             {
                 if (countryRules.ProhibitedCategories.Contains(rule.CategoryId))
@@ -151,7 +148,6 @@ namespace Basket.Filter.Services
                 return new TimeRestrictions { HasTimeRestrictions = false };
             }
 
-            // Use standard meal times
             return new TimeRestrictions
             {
                 HasTimeRestrictions = true,

@@ -98,7 +98,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Private helper methods (keep all your existing methods)
         private async Task<MerchantEligibilityRules> GetDefaultRulesForMerchantAsync(string merchantId)
         {
             return new MerchantEligibilityRules

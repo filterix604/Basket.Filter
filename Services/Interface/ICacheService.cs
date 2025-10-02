@@ -1,5 +1,4 @@
-﻿// Services/Interface/ICacheService.cs
-using Basket.Filter.Models;
+﻿using Basket.Filter.Models;
 using Basket.Filter.Models.AIModels;
 
 namespace Basket.Filter.Services.Interface

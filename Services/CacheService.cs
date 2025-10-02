@@ -139,7 +139,6 @@ namespace Basket.Filter.Services
             return false;
         }
 
-        // Catalog-specific methods (aligned with your existing interface)
         public async Task<CatalogItem?> GetCatalogItemAsync(string sku)
         {
             var key = $"catalog:item:{sku}";
@@ -172,7 +171,6 @@ namespace Basket.Filter.Services
             await SetAsync(key, classification, exp);
         }
 
-        // Batch operations
         public async Task<Dictionary<string, CatalogItem>> GetCatalogItemsBatchAsync(List<string> skus)
         {
             var results = new Dictionary<string, CatalogItem>();
@@ -201,7 +199,6 @@ namespace Basket.Filter.Services
                     await server.FlushDatabaseAsync();
                 }
 
-                // Reset statistics
                 _statistics.TotalHits = 0;
                 _statistics.TotalMisses = 0;
                 _statistics.MemoryHits = 0;
@@ -216,7 +213,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Private helper methods
         private async Task SetInMemoryAsync<T>(string key, T value, TimeSpan expiration) where T : class
         {
             var options = new MemoryCacheEntryOptions
@@ -235,11 +231,11 @@ namespace Basket.Filter.Services
             try
             {
                 var json = JsonSerializer.Serialize(value);
-                return json.Length * 2; // UTF-16 approximation
+                return json.Length * 2;
             }
             catch
             {
-                return 1000; // Default estimate
+                return 1000;
             }
         }
 

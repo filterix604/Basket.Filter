@@ -40,7 +40,6 @@ namespace Basket.Filter.Services
                 var categorizedItems = new List<CategorizedItem>();
                 decimal eligibleAmount = 0;
 
-                // Process items in parallel for better performance
                 var tasks = request.BasketItems.Select(item => CategorizeItemAsync(item, rules, request));
                 var results = await Task.WhenAll(tasks);
                 categorizedItems.AddRange(results);
@@ -54,30 +53,33 @@ namespace Basket.Filter.Services
                     }
                 }
 
-                // Apply daily limit
-                if (eligibleAmount > (decimal)rules.MaxDailyAmount)
-                {
-                    var originalAmount = eligibleAmount;
-                    eligibleAmount = (decimal)rules.MaxDailyAmount;
-                    _logger.LogInformation("Daily limit applied: {Original} → {Limited}", originalAmount, eligibleAmount);
-                }
-
-                // Process fees
-                var fees = request.AdditionalCharges?.Select(c => new Fee
-                {
-                    Type = c.ChargeType,
-                    Name = c.ChargeName,
-                    Amount = c.ChargeAmount / 100,
-                    CurrencyCode = c.CurrencyCode
-                }).ToList() ?? new List<Fee>();
+				var fees = request.AdditionalCharges?.Select(c => new Fee
+				{
+					Type = c.ChargeType,
+					Name = c.ChargeName,
+					Amount = c.ChargeAmount / 100,
+					CurrencyCode = c.CurrencyCode
+				}).ToList() ?? new List<Fee>();
 
 				var totalFeesAmount = fees.Sum(f => f.Amount);
 				var totalAmount = (decimal)request.BasketTotals.TotalAmount / 100;
-				var ineligibleAmount = totalAmount - eligibleAmount;
 
-				// Improved eligibility logic
-				var itemsAmount = totalAmount - (decimal)totalFeesAmount;
-				var isFullyEligible = ineligibleAmount == (decimal)totalFeesAmount;
+				decimal ineligibleItemsAmount = 0;
+				foreach (var categorizedItem in categorizedItems)
+				{
+					if (!categorizedItem.IsEligible)
+					{
+						ineligibleItemsAmount += (decimal)categorizedItem.PricingData.TotalPriceAmount / 100;
+					}
+				}
+
+				var ineligibleAmount = ineligibleItemsAmount + (decimal)totalFeesAmount;
+
+				// Basket is fully eligible if:
+				// 1. No ineligible items (all items are food/beverage)
+				// 2. Fees are allowed to be excluded (they don't count against eligibility)
+				var hasIneligibleItems = categorizedItems.Any(i => !i.IsEligible);
+				var isFullyEligible = !hasIneligibleItems;
 
 				string reasonIfNotEligible = null;
 				if (!isFullyEligible)
@@ -86,17 +88,37 @@ namespace Basket.Filter.Services
 					{
 						reasonIfNotEligible = "Basket contains no eligible items";
 					}
-					else if (ineligibleAmount == (decimal)totalFeesAmount)
+					else if (ineligibleItemsAmount > 0 && (decimal)totalFeesAmount > 0)
 					{
-						reasonIfNotEligible = "Delivery fees excluded";
+						reasonIfNotEligible = "Contains non-food items and delivery fees";
 					}
-					else if (ineligibleAmount > (decimal)totalFeesAmount)
+					else if (ineligibleItemsAmount > 0)
 					{
-						reasonIfNotEligible = "Contains non-food items or alcohol";
+						var ineligibleItems = categorizedItems.Where(i => !i.IsEligible).ToList();
+						var categories = string.Join(", ", ineligibleItems.Select(i => i.DetectedCategory).Distinct());
+						reasonIfNotEligible = $"Contains ineligible items: {categories}";
 					}
-					else
+					else if ((decimal)totalFeesAmount > 0)
 					{
-						reasonIfNotEligible = "Some items excluded from eligibility";
+						reasonIfNotEligible = $"Delivery/service fees excluded (€{totalFeesAmount:F2})";
+					}
+				}
+
+				if (eligibleAmount > (decimal)rules.MaxDailyAmount)
+				{
+					var originalAmount = eligibleAmount;
+					var exceededAmount = eligibleAmount - (decimal)rules.MaxDailyAmount;
+					eligibleAmount = (decimal)rules.MaxDailyAmount;
+
+					ineligibleAmount += exceededAmount;
+
+					_logger.LogInformation("Daily limit applied: {Original} → {Limited}, Excess: {Excess}",
+						originalAmount, eligibleAmount, exceededAmount);
+
+					if (isFullyEligible)
+					{
+						isFullyEligible = false;
+						reasonIfNotEligible = $"Daily limit exceeded by €{exceededAmount:F2}";
 					}
 				}
 
@@ -128,7 +150,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // ENHANCED: Multi-step categorization with AI integration
         private async Task<CategorizedItem> CategorizeItemAsync(BasketItem item, MerchantEligibilityRules rules, BasketRequest request)
         {
             var startTime = DateTime.UtcNow;
@@ -150,7 +171,6 @@ namespace Basket.Filter.Services
 
                 if (catalogItem?.AIClassification != null)
                 {
-                    // Found cached AI classification
                     _logger.LogInformation("CACHE HIT (AI): SKU={Sku}, Confidence={Confidence}",
                         sku, catalogItem.AIClassification.Confidence);
 
@@ -224,14 +244,12 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Rules engine evaluation (aligned with your existing logic)
         private async Task<RulesEvaluationResult> EvaluateWithRulesEngine(BasketItem item, MerchantEligibilityRules rules)
         {
             try
             {
                 string categoryToCheck = item.CategoryData.PrimaryCategory;
 
-                // Check for explicit category rules
                 var matchingRule = rules.CategoryRules.FirstOrDefault(r =>
                     r.CategoryName == categoryToCheck ||
                     r.Keywords.Any(k => item.ItemData.ItemName.ToLowerInvariant().Contains(k.ToLowerInvariant()) ||
@@ -252,7 +270,6 @@ namespace Basket.Filter.Services
                     };
                 }
 
-                // Check for absolute prohibitions (alcohol, tobacco, etc.)
                 var prohibitedKeywords = new[] { "alcohol", "wine", "beer", "tobacco", "cigarette", "vodka", "whiskey", "rum", "gin" };
                 var itemText = $"{item.ItemData.ItemName} {item.ItemData.ItemDescription}".ToLowerInvariant();
 
@@ -349,7 +366,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Business rules safety net (critical for compliance)
         private async Task<AIClassificationResult> ApplyBusinessRulesToAIResult(
             AIClassificationResult aiResult,
             BasketItem item,
@@ -395,7 +411,6 @@ namespace Basket.Filter.Services
                     }
                 }
 
-                // AI result passes business rules validation
                 return aiResult;
             }
             catch (Exception ex)
@@ -420,7 +435,6 @@ namespace Basket.Filter.Services
 
                 if (catalogItem == null)
                 {
-                    // Create new catalog entry
                     catalogItem = new CatalogItem
                     {
                         Sku = sku,
@@ -447,7 +461,6 @@ namespace Basket.Filter.Services
 
                 catalogItem.UpdatedAt = DateTime.UtcNow;
 
-                // Save to catalog (will update cache automatically)
                 await _catalogService.SaveOrUpdateCatalogItemAsync(catalogItem);
 
                 _logger.LogInformation("Stored AI result: {Sku} → Eligible: {IsEligible} (Confidence: {Confidence})",
@@ -456,16 +469,13 @@ namespace Basket.Filter.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to store AI result for: {Sku}", sku);
-                // Don't throw - this is not critical for the current request
             }
         }
 
-        // Helper methods
         private void AddProcessingMetadata(CategorizedItem item, string source, DateTime startTime, double confidence)
         {
             var processingTime = DateTime.UtcNow - startTime;
 
-            // Enhance reason with metadata
             item.EligibilityReason += $" [Source: {source}, Confidence: {confidence:F2}, Time: {processingTime.TotalMilliseconds:F0}ms]";
         }
 

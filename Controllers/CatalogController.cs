@@ -18,9 +18,7 @@ namespace Basket.Filter.Controllers
             _logger = logger;
         }
 
-        /// <summary>
-        /// Upload catalog items from JSON file
-        /// </summary>
+        // Upload catalog items from JSON file
         [HttpPost("upload")]
         public async Task<ActionResult<CatalogUploadResponse>> UploadCatalog(IFormFile file)
         {
@@ -49,9 +47,7 @@ namespace Basket.Filter.Controllers
             }
         }
 
-        /// <summary>
-        /// Get catalog item by SKU
-        /// </summary>
+        //Get catalog item by SKU
         [HttpGet("item/{sku}")]
         public async Task<ActionResult<CatalogItem>> GetItemBySku(string sku)
         {
@@ -74,9 +70,7 @@ namespace Basket.Filter.Controllers
             }
         }
 
-        /// <summary>
-        /// Delete entire catalog (for testing purposes)
-        /// </summary>
+        // Delete entire catalog (for testing purposes)
         [HttpDelete]
         public async Task<ActionResult> DeleteCatalog()
         {
