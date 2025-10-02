@@ -62,7 +62,6 @@ public class VertexAIService : IVertexAIService
 
         try
         {
-            // ADD DETAILED LOGGING
             _logger.LogInformation("AI Config - Model: {Model}, Location: {Location}, Project: {Project}",
                 _config.ModelName, _config.Location, _config.ProjectId);
 
@@ -108,12 +107,10 @@ public class VertexAIService : IVertexAIService
                 return GetFallbackResult($"AI error: {responseContent} [Source: vertex_ai_fresh, Confidence: 0.00, Time: {processingTime.TotalMilliseconds}ms]");
             }
 
-            // ============= ADD THESE LOGS HERE =============
             _logger.LogInformation("=== VERTEX AI RAW RESPONSE START ===");
             _logger.LogInformation("Response Status: {StatusCode}", response.StatusCode);
             _logger.LogInformation("Response Content: {ResponseContent}", responseContent);
             _logger.LogInformation("=== VERTEX AI RAW RESPONSE END ===");
-            // ===============================================
 
             var result = ParseResponse(responseContent, request);
             _logger.LogInformation("AI Success: {ProductName} → {IsEligible} (Confidence: {Confidence})",
@@ -209,10 +206,8 @@ or
             if (string.IsNullOrEmpty(text))
                 return GetFallbackResult("Empty AI response");
 
-            // LOG THE RAW AI RESPONSE
             _logger.LogInformation("Raw AI Response: {Response}", text);
 
-            // Clean the response - remove markdown and extra text
             var cleanedText = CleanAIResponse(text);
             _logger.LogInformation("Cleaned AI Response: {CleanedResponse}", cleanedText);
 
@@ -242,16 +237,13 @@ or
         }
     }
 
-    // ADD THIS NEW METHOD
     private string CleanAIResponse(string rawResponse)
     {
         if (string.IsNullOrEmpty(rawResponse))
             return "{}";
 
-        // Remove markdown code blocks
         var cleaned = rawResponse.Trim();
 
-        // Remove ```json and ``` markers
         if (cleaned.StartsWith("```json"))
             cleaned = cleaned.Substring(7);
         if (cleaned.StartsWith("```"))
@@ -259,7 +251,6 @@ or
         if (cleaned.EndsWith("```"))
             cleaned = cleaned.Substring(0, cleaned.Length - 3);
 
-        // Find JSON object boundaries
         var startIndex = cleaned.IndexOf('{');
         var lastIndex = cleaned.LastIndexOf('}');
 
