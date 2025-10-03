@@ -1,117 +1,92 @@
-Basket.Filter
+# Basket.Filter
 
-A smart basket filtering system that validates shopping baskets against merchant catalogs and eligibility rules. Built for the FilterX hackathon.
+A smart basket filtering system that validates shopping baskets against merchant catalogs and eligibility rules.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
 
-🚀 LIVE API
+## 🚀 Live API
 
-Base URL: https://basket-filter-api-7mnj62hzza-el.a.run.app
+**Base URL:** `https://basket-filter-api-7mnj62hzza-el.a.run.app`
 
-Swagger Docs: https://basket-filter-api-7mnj62hzza-el.a.run.app/swagger
+**Swagger Docs:** [https://basket-filter-api-7mnj62hzza-el.a.run.app/swagger](https://basket-filter-api-7mnj62hzza-el.a.run.app/swagger)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
 
-✨ FEATURES
+## ✨ Features
 
-• Smart Filtering - Validates basket items against merchant catalogs and eligibility rules
+- **Smart Filtering** - Validates basket items against merchant catalogs and eligibility rules
+  
+- **Merchant Onboarding** - Easy merchant and catalog management
+  
+- **Caching System** - Built-in Redis cache for optimized performance
+  
+- **Cloud Deployed** - Hosted on Google Cloud Run with Firestore database
 
-• Merchant Onboarding - Easy merchant and catalog management
+---
 
-• Caching System - Built-in Redis cache for optimized performance
+## 📋 API Endpoints
 
-• Cloud Deployed - Hosted on Google Cloud Run with Firestore database
+### Basket Filter
+- `POST /api/BasketFilter/filter` - Filter and validate basket items
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### Catalog Management
+- `POST /api/Catalog/upload` - Upload catalog items
+- `GET /api/Catalog/item` - Get catalog item details
+- `DELETE /api/Catalog` - Clear catalog data
 
-📋 API ENDPOINTS
+### Merchant Management
+- `POST /api/Merchant/onboard` - Onboard new merchant
+- `GET /api/Merchant/template` - Get merchant template
 
-Basket Filter
+### Cache Management
+- `GET /api/cache/stats` - View cache statistics
+- `POST /api/cache/clear` - Clear cache data
 
-  POST /api/BasketFilter/filter - Filter and validate basket items
+---
 
-Catalog Management
+## 🔧 Tech Stack
 
-  POST /api/Catalog/upload - Upload catalog items
-  GET /api/Catalog/item - Get catalog item details
-  DELETE /api/Catalog - Clear catalog data
+- **.NET 8** - Web API framework
+- **Firestore** - NoSQL database
+- **Redis** - Caching layer
+- **Google Cloud Run** - Container hosting
+- **Swagger** - API documentation
 
-Merchant Management
+---
 
-  POST /api/Merchant/onboard - Onboard new merchant
-  GET /api/Merchant/template - Get merchant template
-
-Cache Management
-
-  GET /api/cache/stats - View cache statistics
-  POST /api/cache/clear - Clear cache data
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔧 TECH STACK
-
-• .NET 8 - Web API framework
-
-• Firestore - NoSQL database
-
-• Redis - Caching layer
-
-• Google Cloud Run - Container hosting
-
-• Swagger - API documentation
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📦 PREREQUISITES
+## 📦 Prerequisites
 
 Before you begin, ensure you have:
 
-• .NET 8 SDK
+- .NET 8 SDK
+- Google Cloud account
+- Firebase/Firestore project
+- Redis instance (local or cloud)
+- Postman (for testing)
 
-• Google Cloud account
+---
 
-• Firebase/Firestore project
-
-• Redis instance (local or cloud)
-
-• Postman (for testing)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🖥️ LOCAL DEVELOPMENT SETUP
-
-Step 1: Clone Repository
+## 🖥️ Local Development Setup
 
 git clone <your-repo-url>
 
 cd basket-filter-api
 
-Step 2: Configure Firestore
+Download service account key from Firebase Console
 
-• Download service account key from Firebase Console
+Place it in project root as 'serviceAccountKey.json'
 
-• Place it in project root as 'serviceAccountKey.json'
-
-• Set environment variable:
+Set environment variable:
 
 export GOOGLE_APPLICATION_CREDENTIALS="./serviceAccountKey.json"
-
-Step 3: Configure Redis
 
 Update appsettings.json:
 
 {
-
-  "Redis": 
-  {
-  
-    "ConnectionString": "localhost:6379"
-    
-  }
-  
+"Redis": {
+"ConnectionString": "localhost:6379"
 }
-
-Step 4: Run Application
+}
 
 dotnet restore
 
@@ -119,13 +94,10 @@ dotnet build
 
 dotnet run
 
-API will be available at: https://localhost:7xxx
+API will be available at: `https://localhost:7xxx`
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-☁️ CLOUD DEPLOYMENT (Google Cloud Run)
-
-Step 1: Install Google Cloud CLI
+## ☁️ Cloud Deployment (Google Cloud Run)
 
 curl https://sdk.cloud.google.com | bash
 
@@ -135,115 +107,85 @@ gcloud auth login
 
 gcloud config set project YOUR_PROJECT_ID
 
-Step 2: Build Docker Image
-
 docker build -t gcr.io/YOUR_PROJECT_ID/basket-filter-api .
 
 docker push gcr.io/YOUR_PROJECT_ID/basket-filter-api
 
-Step 3: Deploy to Cloud Run
+gcloud run deploy basket-filter-api 
 
-gcloud run deploy basket-filter-api \
-  --image gcr.io/YOUR_PROJECT_ID/basket-filter-api \
-  --platform managed \
-  --region us-east1 \
-  --allow-unauthenticated \
-  --set-env-vars="GOOGLE_APPLICATION_CREDENTIALS=/app/serviceAccountKey.json"
+--image gcr.io/YOUR_PROJECT_ID/basket-filter-api 
 
-Step 4: Configure Firestore
+--platform managed 
 
-• Create Firestore database in Google Cloud Console
+--region us-east1 
 
-• Add service account key to container
+--allow-unauthenticated 
 
-• Set appropriate IAM permissions
+--set-env-vars="GOOGLE_APPLICATION_CREDENTIALS=/app/serviceAccountKey.json"
 
-Step 5: Setup Redis (Cloud Memorystore)
+Create Firestore database in Google Cloud Console
+
+Add service account key to container
+
+Set appropriate IAM permissions
 
 gcloud redis instances create basket-cache --size=1 --region=us-east1
 
 gcloud redis instances describe basket-cache --region=us-east1
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🔐 Environment Variables
 
-🔐 ENVIRONMENT VARIABLES
-
-Required Variables:
+**Required Variables:**
 
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccountKey.json
-
 REDIS_CONNECTION_STRING=your-redis-host:6379
-
 ASPNETCORE_ENVIRONMENT=Production
 
-Optional Variables:
+**Optional Variables:**
 
 FIRESTORE_PROJECT_ID=your-project-id
-
 CACHE_EXPIRATION_MINUTES=30
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+## 🧪 Testing Setup
 
-🧪 TESTING SETUP
+Open Postman
+Import → Upload the collection JSON
+Set environment variable: baseUrl = https://basket-filter-api-7mnj62hzza-el.a.run.app
 
-Step 1: Import Postman Collection
-
-• Open Postman
-
-• Import → Upload the collection JSON
-
-• Set environment variable: baseUrl = https://basket-filter-api-7mnj62hzza-el.a.run.app
-
-Step 2: Test Endpoints
-
-1. Run /api/Merchant/onboard first
-2. Upload catalog via /api/Catalog/upload
-3. Test filtering with /api/BasketFilter/filter
-4. Check cache stats at /api/cache/stats
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🔧 TROUBLESHOOTING
+Run /api/Merchant/onboard first
+Upload catalog via /api/Catalog/upload
+Test filtering with /api/BasketFilter/filter
+Check cache stats at /api/cache/stats
 
 
-Issue: Firestore connection fails
+---
 
-✓ Verify service account key path
+## 🔧 Troubleshooting
 
-✓ Check IAM permissions
+**Issue: Firestore connection fails**
+- ✓ Verify service account key path
+- ✓ Check IAM permissions
+- ✓ Ensure Firestore API is enabled
 
-✓ Ensure Firestore API is enabled
+**Issue: Redis connection timeout**
+- ✓ Check Redis instance is running
+- ✓ Verify connection string
+- ✓ Check network/firewall rules
 
+**Issue: Cloud Run deployment fails**
+- ✓ Check Docker image builds locally
+- ✓ Verify all environment variables
+- ✓ Review Cloud Run logs: gcloud run logs read
 
-Issue: Redis connection timeout
+---
 
-✓ Check Redis instance is running
-
-✓ Verify connection string
-
-✓ Check network/firewall rules
-
-
-Issue: Cloud Run deployment fails
-
-✓ Check Docker image builds locally
-
-✓ Verify all environment variables
-
-✓ Review Cloud Run logs: gcloud run logs read
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📞 SUPPORT
+## 📞 Support
 
 For issues or questions:
+- **Swagger Documentation:** `/swagger`
+- **Cloud Run Logs:** `gcloud run logs read`
+- **Firestore Console:** Firebase Console
 
-• Swagger Documentation: /swagger
+---
 
-• Cloud Run Logs: gcloud run logs read
-
-• Firestore Console: Firebase Console
-
-
-
-Built for FilterX Hackathon 2025
+**Built by Filterix Team for WGS Hackathon 2025**
