@@ -21,20 +21,35 @@ namespace Basket.Filter.Controllers
         }
 
         [HttpPost("onboard")]
-        public async Task<ActionResult<MerchantEligibilityRules>> OnboardMerchant([FromBody] MerchantOnboardingRequest request)
+        public async Task<ActionResult<object>> OnboardMerchant([FromBody] MerchantOnboardingRequest request)
         {
             try
             {
-                var result = await _onboardingService.OnboardMerchantAsync(request);
-                return Ok(result);
+                await _onboardingService.OnboardMerchantAsync(request);
+                return Ok(new
+                {
+                    message = "Merchant onboarded successfully",
+                    merchantId = request.MerchantId,
+                    status = "success"
+                });
             }
             catch (InvalidOperationException ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(new
+                {
+                    message = "Merchant onboarding failed",
+                    error = ex.Message,
+                    status = "failed"
+                });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Merchant onboarding failed due to server error",
+                    error = ex.Message,
+                    status = "error"
+                });
             }
         }
 
