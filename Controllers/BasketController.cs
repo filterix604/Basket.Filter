@@ -2,6 +2,7 @@
 using Basket.Filter.Models;
 using Basket.Filter.Services.Interface;
 using Basket.Filter.Models.AIModels;
+using Basket.Filter.Services.Interfaces;
 
 namespace Basket.Filter.Controllers
 {
@@ -10,17 +11,20 @@ namespace Basket.Filter.Controllers
     public class BasketFilterController : ControllerBase
     {
         private readonly IBasketFilteringService _basketFilteringService;
+        private readonly IDataStorageService _dataStorageService;
         private readonly ICacheService _cacheService;
         private readonly IVertexAIService _vertexAIService;
         private readonly ILogger<BasketFilterController> _logger;
 
         public BasketFilterController(
             IBasketFilteringService basketFilteringService,
+            IDataStorageService dataStorageService,
             ICacheService cacheService,
             IVertexAIService vertexAIService,
             ILogger<BasketFilterController> logger)
         {
             _basketFilteringService = basketFilteringService;
+            _dataStorageService = dataStorageService;
             _cacheService = cacheService;
             _vertexAIService = vertexAIService;
             _logger = logger;
@@ -38,15 +42,20 @@ namespace Basket.Filter.Controllers
 
                 _logger.LogInformation("Received basket filter request: {BasketId} with {ItemCount} items",
                     request.TransactionData.BasketId, request.BasketItems.Count);
+				await _dataStorageService.StoreBasketRequestAsync(request);
 
-                var result = await _basketFilteringService.FilterBasketAsync(request);
+				var result = await _basketFilteringService.FilterBasketAsync(request);
 
                 _logger.LogInformation("Basket filter response: {BasketId} - Eligible: €{EligibleAmount}/€{TotalAmount}",
                     result.BasketId, result.EligibleAmount, result.TotalAmount);
 
                 return Ok(result);
             }
-            catch (Exception ex)
+			catch (InvalidOperationException ex)
+			{
+				return BadRequest(new { error = ex.Message });
+			}
+			catch (Exception ex)
             {
                 _logger.LogError(ex, "Error filtering basket: {BasketId}",
                     request?.TransactionData?.BasketId ?? "unknown");
@@ -54,7 +63,7 @@ namespace Basket.Filter.Controllers
             }
         }
 
-        [HttpGet("cache/stats")]
+		[HttpGet("cache/stats")]
         public ActionResult<CacheStatistics> GetCacheStats()
         {
             try

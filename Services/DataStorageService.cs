@@ -1,11 +1,9 @@
-﻿using Google.Cloud.Firestore;
+﻿using Basket.Filter.Mappers;
 using Basket.Filter.Models;
-using Basket.Filter.Services.Interfaces;
 using Basket.Filter.Services;
-using Google.Cloud.Firestore.V1;
+using Basket.Filter.Services.Interfaces;
+using Google.Cloud.Firestore;
 using System.Text.Json;
-using Basket.Filter.Mappers;
-using static Google.Rpc.Context.AttributeContext.Types;
 
 namespace Basket.Filter.Infrastructure.Services;
 
@@ -52,12 +50,10 @@ public class DataStorageService : IDataStorageService
 				ineligibleAmount = (double)response.IneligibleAmount,
 				isFullyEligible = response.IsFullyEligible,
 				itemCount = request.BasketItems.Count,
-				//eligibleItemCount = response.CategorizedItems.Count(i => i.Eligible),
 				currencyCode = request.TransactionData.CurrencyCode,
 				countryCode = request.TransactionData.CountryCode,
 				reasonIfNotEligible = response.ReasonIfNotEligible ?? ""
 			};
-			// Store transaction data
 			await collection.Document(request.TransactionData.BasketId).SetAsync(summary);
 
 			_logger.LogDebug("Stored transaction summary {BasketId} in Firestore", request.TransactionData.BasketId);
@@ -65,7 +61,6 @@ public class DataStorageService : IDataStorageService
 		catch (Exception ex)
 		{
 			_logger.LogError(ex, "Failed to store transaction {BasketId}", request.TransactionData.BasketId);
-			// Don't throw - this is not critical for the response
 		}
 	}
 
@@ -109,8 +104,6 @@ public class DataStorageService : IDataStorageService
 	{
 		try
 		{
-
-			//var responseId = Guid.NewGuid().ToString();
 			await _firestoreDb.Collection(RESPONSES_COLLECTION)
 					.Document(response.BasketId)
 					.SetAsync(response);

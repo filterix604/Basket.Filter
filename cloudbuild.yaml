@@ -1,8 +1,7 @@
 # cloudbuild.yaml 
 substitutions:
   _REGION: 'asia-south1'
-  _AI_REGION: 'us-central1'  # Keep as us-central1 for Gemini
-  _SERVICE_ACCOUNT: 'vertex-ai-sa@basket-filter-engine.iam.gserviceaccount.com'  # FIX: Use actual project ID
+  _SERVICE_ACCOUNT: 'vertex-ai-sa@basket-filter-engine.iam.gserviceaccount.com'
   _SERVICE_NAME: 'basket-filter-api'
 
 steps:
@@ -22,7 +21,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/basket-filter-repo/basket-filter:latest']
     
-  # Deploy to Cloud Run with AI support
+  # Deploy to Cloud Run 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
@@ -36,10 +35,10 @@ steps:
       '--max-instances', '10',
       '--min-instances', '0',
       '--timeout', '900',
-      '--service-account', '${_SERVICE_ACCOUNT}',  # This should now work
+      '--service-account', '${_SERVICE_ACCOUNT}',
       '--vpc-connector', 'basket-filter-connector',
       '--vpc-egress', 'private-ranges-only',
-      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VertexAI__ProjectId=$PROJECT_ID,VertexAI__Location=${_AI_REGION},VertexAI__ModelName=gemini-1.5-pro-001,VertexAI__EnableAI=true,VertexAI__Temperature=0.3,VertexAI__MaxTokens=1024'
+      '--set-env-vars', 'ASPNETCORE_ENVIRONMENT=Production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
     ]
 
 images:

@@ -23,7 +23,6 @@ namespace Basket.Filter.Services
             _cacheService = cacheService;
         }
 
-        // Enhanced GetItemBySkuAsync with AI classification support
         public async Task<CatalogItem?> GetItemBySkuAsync(string sku)
         {
             try
@@ -61,7 +60,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // NEW: Enhanced save method for AI classifications
         public async Task<CatalogItem> SaveOrUpdateCatalogItemAsync(CatalogItem item)
         {
             try
@@ -75,7 +73,6 @@ namespace Basket.Filter.Services
                 var docRef = _firestore.Collection(CATALOG_COLLECTION).Document(item.Sku);
                 await docRef.SetAsync(item);
 
-                // Update cache
                 await _cacheService.SetCatalogItemAsync(item.Sku, item);
 
                 _logger.LogInformation("Saved catalog item: {Sku} (AI: {HasAI})",
@@ -90,7 +87,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // NEW: Update AI classification for existing item
         public async Task UpdateAIClassificationAsync(string sku, AIClassificationData classification)
         {
             try
@@ -103,7 +99,6 @@ namespace Basket.Filter.Services
                     ["UpdatedAt"] = DateTime.UtcNow
                 });
 
-                // Remove from cache to force refresh
                 await _cacheService.RemoveCatalogItemAsync(sku);
 
                 _logger.LogInformation("Updated AI classification: {Sku}", sku);
@@ -115,7 +110,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Enhanced batch operations
         public async Task<Dictionary<string, CatalogItem>> GetItemsBatchAsync(List<string> skus)
         {
             var results = new Dictionary<string, CatalogItem>();
@@ -141,7 +135,6 @@ namespace Basket.Filter.Services
                         if (doc.Exists)
                         {
                             var item = doc.ConvertTo<CatalogItem>();
-                            // Cache it for next time
                             await _cacheService.SetCatalogItemAsync(sku, item);
                             return new KeyValuePair<string, CatalogItem?>(sku, item);
                         }
@@ -163,7 +156,6 @@ namespace Basket.Filter.Services
             return results;
         }
 
-        // Existing methods remain unchanged
         public async Task<CatalogUploadResponse> UploadCatalogJsonAsync(IFormFile file)
         {
             var response = new CatalogUploadResponse();
@@ -236,7 +228,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Keep all your existing methods (GetItemsByCategoryAsync, SearchItemsAsync, etc.)
         public async Task<List<CatalogItem>> GetItemsByCategoryAsync(string category)
         {
             try
@@ -333,7 +324,6 @@ namespace Basket.Filter.Services
             }
         }
 
-        // Keep your existing private methods
         private async Task<List<CatalogItem>> ParseJsonFileAsync(IFormFile file)
         {
             var items = new List<CatalogItem>();

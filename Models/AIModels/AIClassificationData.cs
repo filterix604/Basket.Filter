@@ -20,7 +20,7 @@ namespace Basket.Filter.Models.AIModels
 
         [FirestoreProperty("source")]
         [JsonPropertyName("source")]
-        public string Source { get; set; } = string.Empty; // "rules", "vertex_ai", "manual"
+        public string Source { get; set; } = string.Empty;
 
         [FirestoreProperty("modelVersion")]
         [JsonPropertyName("modelVersion")]
