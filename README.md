@@ -27,18 +27,22 @@ Swagger Docs: https://basket-filter-api-7mnj62hzza-el.a.run.app/swagger
 📋 API ENDPOINTS
 
 Basket Filter
+
   POST /api/BasketFilter/filter - Filter and validate basket items
 
 Catalog Management
+
   POST /api/Catalog/upload - Upload catalog items
   GET /api/Catalog/item - Get catalog item details
   DELETE /api/Catalog - Clear catalog data
 
 Merchant Management
+
   POST /api/Merchant/onboard - Onboard new merchant
   GET /api/Merchant/template - Get merchant template
 
 Cache Management
+
   GET /api/cache/stats - View cache statistics
   POST /api/cache/clear - Clear cache data
 
@@ -201,6 +205,7 @@ Step 2: Test Endpoints
 
 🔧 TROUBLESHOOTING
 
+
 Issue: Firestore connection fails
 
 ✓ Verify service account key path
@@ -209,6 +214,7 @@ Issue: Firestore connection fails
 
 ✓ Ensure Firestore API is enabled
 
+
 Issue: Redis connection timeout
 
 ✓ Check Redis instance is running
@@ -216,6 +222,7 @@ Issue: Redis connection timeout
 ✓ Verify connection string
 
 ✓ Check network/firewall rules
+
 
 Issue: Cloud Run deployment fails
 
@@ -236,5 +243,7 @@ For issues or questions:
 • Cloud Run Logs: gcloud run logs read
 
 • Firestore Console: Firebase Console
+
+
 
 Built for FilterX Hackathon 2025
