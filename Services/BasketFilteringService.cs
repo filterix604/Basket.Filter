@@ -53,32 +53,34 @@ namespace Basket.Filter.Services
                     }
                 }
 
-				var fees = request.AdditionalCharges?.Select(c => new Fee
-				{
-					Type = c.ChargeType,
-					Name = c.ChargeName,
-					Amount = c.ChargeAmount / 100,
-					CurrencyCode = c.CurrencyCode
-				}).ToList() ?? new List<Fee>();
+                // Fix: Cast to decimal BEFORE division to avoid integer division
+                var fees = request.AdditionalCharges?.Select(c => new Fee
+                {
+                    Type = c.ChargeType,
+                    Name = c.ChargeName,
+                    Amount = (double)((decimal)c.ChargeAmount / 100), // Cast to decimal for division, then to double
+                    CurrencyCode = c.CurrencyCode
+                }).ToList() ?? new List<Fee>();
 
-				var totalFeesAmount = fees.Sum(f => f.Amount);
-				var totalAmount = (decimal)request.BasketTotals.TotalAmount / 100;
+                var totalFeesAmount = fees.Sum(f => f.Amount);
+                var totalAmount = (decimal)request.BasketTotals.TotalAmount / 100;
 
-				decimal ineligibleItemsAmount = 0;
-				foreach (var categorizedItem in categorizedItems)
-				{
-					if (!categorizedItem.IsEligible)
-					{
-						ineligibleItemsAmount += (decimal)categorizedItem.PricingData.TotalPriceAmount / 100;
-					}
-				}
+                decimal ineligibleItemsAmount = 0;
+                foreach (var categorizedItem in categorizedItems)
+                {
+                    if (!categorizedItem.IsEligible)
+                    {
+                        ineligibleItemsAmount += (decimal)categorizedItem.PricingData.TotalPriceAmount / 100;
+                    }
+                }
 
-				var ineligibleAmount = ineligibleItemsAmount + (decimal)totalFeesAmount;
+                // Fix: Calculate ineligible amount to ensure totals always balance
+                var ineligibleAmount = totalAmount - eligibleAmount;
 
-				// Basket is fully eligible if:
-				// 1. No ineligible items (all items are food/beverage)
-				// 2. Fees are allowed to be excluded (they don't count against eligibility)
-				var hasIneligibleItems = categorizedItems.Any(i => !i.IsEligible);
+                // Basket is fully eligible if:
+                // 1. No ineligible items (all items are food/beverage)
+                // 2. Fees are allowed to be excluded (they don't count against eligibility)
+                var hasIneligibleItems = categorizedItems.Any(i => !i.IsEligible);
 				var isFullyEligible = !hasIneligibleItems;
 
 				string reasonIfNotEligible = null;
